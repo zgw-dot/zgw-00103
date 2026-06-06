@@ -24,7 +24,9 @@ export enum OperationType {
   ALARM_CLOSE = 'alarm_close',
   ALARM_RECOVER = 'alarm_recover',
   IDEMPOTENCY_HIT = 'idempotency_hit',
-  IDEMPOTENCY_CONFLICT = 'idempotency_conflict'
+  IDEMPOTENCY_CONFLICT = 'idempotency_conflict',
+  BATCH_ROW_REMARK_UPDATE = 'batch_row_remark_update',
+  BATCH_ROW_REMARK_CLEAR = 'batch_row_remark_clear'
 }
 
 export interface Device {
@@ -123,6 +125,7 @@ export interface AuditLog {
 
 export interface ApiResponse<T = any> {
   success: boolean;
+  code?: string;
   data?: T;
   message?: string;
   errors?: string[];
@@ -275,4 +278,50 @@ export interface CsvReadingRow {
   deviceId: string;
   temperature: string;
   readingTime: string;
+}
+
+export interface BatchRowRemark {
+  id?: string;
+  importBatchId: string;
+  rowIndex: number;
+  remarkContent: string;
+  handledBy: string;
+  handledAt: number;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface BatchRowRemarkStats {
+  totalFailedRows: number;
+  remarkedRows: number;
+  unremarkedRows: number;
+}
+
+export interface BatchRowResultWithRemark extends BatchRowResult {
+  remark?: BatchRowRemark | null;
+}
+
+export interface BatchDetailWithRemarks {
+  batch: ImportBatch & { remarkStats: BatchRowRemarkStats };
+  rowResults: PaginatedResult<BatchRowResultWithRemark>;
+  alarms: Alarm[];
+  auditLogs: AuditLog[];
+}
+
+export interface BatchDetailAllRowsWithRemarks {
+  batch: ImportBatch & { remarkStats: BatchRowRemarkStats };
+  rowResults: BatchRowResultWithRemark[];
+  alarms: Alarm[];
+  auditLogs: AuditLog[];
+}
+
+export interface UpsertRemarkInput {
+  rowIndex: number;
+  remarkContent: string;
+}
+
+export interface UpsertRemarkResult {
+  remark: BatchRowRemark;
+  isNew: boolean;
+  isClear: boolean;
 }

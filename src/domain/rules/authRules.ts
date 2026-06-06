@@ -1,8 +1,8 @@
 import { UnauthorizedError } from '../../utils/errors';
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['alarm_acknowledge', 'alarm_close', 'device_manage', 'threshold_manage', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches'],
-  manager: ['alarm_acknowledge', 'alarm_close', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches'],
+  admin: ['alarm_acknowledge', 'alarm_close', 'device_manage', 'threshold_manage', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks'],
+  manager: ['alarm_acknowledge', 'alarm_close', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks'],
   operator: ['import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches'],
   viewer: ['export_audit', 'view_batches', 'export_batches'],
 };
@@ -74,6 +74,10 @@ export function checkViewBatchesPermission(userId: string): void {
 
 export function checkExportBatchesPermission(userId: string): void {
   checkPermission(userId, 'export_batches');
+}
+
+export function checkManageRowRemarksPermission(userId: string): void {
+  checkPermission(userId, 'manage_row_remarks');
 }
 
 export function getAllRoles(): string[] {

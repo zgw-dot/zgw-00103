@@ -156,6 +156,19 @@ function initializeTables(db: Database): void {
       created_at INTEGER NOT NULL
     )`,
 
+    `CREATE TABLE IF NOT EXISTS batch_row_remarks (
+      id TEXT PRIMARY KEY,
+      import_batch_id TEXT NOT NULL,
+      row_index INTEGER NOT NULL,
+      remark_content TEXT NOT NULL,
+      handled_by TEXT NOT NULL,
+      handled_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (import_batch_id) REFERENCES import_batches(id) ON DELETE CASCADE,
+      UNIQUE(import_batch_id, row_index)
+    )`,
+
     `CREATE INDEX IF NOT EXISTS idx_alarms_device_status ON alarms(device_id, status)`,
     `CREATE INDEX IF NOT EXISTS idx_alarms_reading_time ON alarms(reading_time)`,
     `CREATE INDEX IF NOT EXISTS idx_readings_device_time ON temperature_readings(device_id, reading_time)`,
@@ -168,6 +181,8 @@ function initializeTables(db: Database): void {
     `CREATE INDEX IF NOT EXISTS idx_import_batches_idempotency ON import_batches(idempotency_key, created_by)`,
     `CREATE INDEX IF NOT EXISTS idx_import_batches_original ON import_batches(original_batch_id)`,
     `CREATE INDEX IF NOT EXISTS idx_idempotency_keys_operator ON idempotency_keys(operator)`,
+    `CREATE INDEX IF NOT EXISTS idx_batch_row_remarks_batch ON batch_row_remarks(import_batch_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_batch_row_remarks_batch_row ON batch_row_remarks(import_batch_id, row_index)`,
   ];
 
   for (const sql of createTables) {

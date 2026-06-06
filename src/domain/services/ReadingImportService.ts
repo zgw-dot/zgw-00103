@@ -11,6 +11,7 @@ import {
   AlarmRepository,
   BatchRowResultRepository,
   IdempotencyKeyRepository,
+  BatchRowRemarkRepository,
 } from '../../storage/repositories';
 import { AlarmService } from './AlarmService';
 import {
@@ -30,6 +31,13 @@ import {
   AuditLog,
   Threshold,
   QueryFilters,
+  PaginatedResult,
+  BatchRowRemark,
+  BatchRowRemarkStats,
+  BatchRowResultWithRemark,
+  BatchDetailWithRemarks,
+  BatchDetailAllRowsWithRemarks,
+  UpsertRemarkResult,
 } from '../../types';
 import {
   validateImportRow,
@@ -38,6 +46,7 @@ import {
   checkDryRunPermission,
   checkViewBatchesPermission,
   checkExportBatchesPermission,
+  checkManageRowRemarksPermission,
   performDryRun,
   preCheckAndClassifyRow,
   PreCheckContext,
@@ -46,7 +55,7 @@ import {
 import logger from '../../utils/logger';
 import { NotFoundError, BusinessError, ConflictError } from '../../utils/errors';
 
-const EXPORT_ROW_FIELDS: Array<keyof BatchRowResult> = [
+const EXPORT_ROW_FIELDS: Array<keyof BatchRowResultWithRemark> = [
   'rowIndex',
   'deviceId',
   'temperature',
@@ -56,6 +65,15 @@ const EXPORT_ROW_FIELDS: Array<keyof BatchRowResult> = [
   'importBatchId',
   'id',
   'createdAt',
+  'remark',
+];
+
+const EXPORT_REMARK_FIELDS: Array<keyof BatchRowRemark> = [
+  'remarkContent',
+  'handledBy',
+  'handledAt',
+  'createdAt',
+  'updatedAt',
 ];
 
 const EXPORT_ALARM_FIELDS: Array<keyof Alarm> = [
@@ -154,6 +172,7 @@ export class ReadingImportService {
     private readingRepo: ReadingRepository,
     private importBatchRepo: ImportBatchRepository,
     private batchRowResultRepo: BatchRowResultRepository,
+    private batchRowRemarkRepo: BatchRowRemarkRepository,
     private auditRepo: AuditRepository,
     private alarmService: AlarmService,
     private thresholdRepo: ThresholdRepository,
@@ -572,6 +591,233 @@ export class ReadingImportService {
     };
   }
 
+  private joinRemarksWithRows(
+    rows: BatchRowResult[],
+    remarks: BatchRowRemark[]
+  ): BatchRowResultWithRemark[] {
+    const remarkMap = new Map<number, BatchRowRemark>();
+    for (const remark of remarks) {
+      remarkMap.set(remark.rowIndex, remark);
+    }
+    return rows.map(row => ({
+      ...row,
+      remark: remarkMap.get(row.rowIndex) || null,
+    }));
+  }
+
+  getBatchDetailWithRemarks(
+    batchId: string,
+    operator: string,
+    filters: BatchDetailFilters = {}
+  ): BatchDetailWithRemarks {
+    checkViewBatchesPermission(operator);
+
+    const batch = this.importBatchRepo.findById(batchId);
+    if (!batch) {
+      throw new NotFoundError(`导入批次"${batchId}"不存在`, { batchId });
+    }
+
+    if (batch.status === BatchStatus.ROLLED_BACK) {
+      throw new BusinessError(
+        `导入批次"${batchId}"已回滚，仅可查看批次元信息`,
+        'BATCH_ROLLED_BACK',
+        { batchId, status: batch.status }
+      );
+    }
+
+    const dataBatchId = batch.originalBatchId || batchId;
+
+    const rowStatusFilter = filters.rowStatus === 'all' ? undefined : filters.rowStatus;
+    const queryFilters: QueryFilters = {
+      rowStatus: rowStatusFilter,
+      page: filters.page || 1,
+      pageSize: filters.pageSize || 100,
+    };
+
+    const rowResults = this.batchRowResultRepo.findByBatchId(dataBatchId, queryFilters);
+    const allRemarks = this.batchRowRemarkRepo.findByBatchId(dataBatchId);
+    const rowResultsWithRemark: PaginatedResult<BatchRowResultWithRemark> = {
+      ...rowResults,
+      items: this.joinRemarksWithRows(rowResults.items, allRemarks),
+    };
+
+    const alarms = this.alarmRepo.findAll({ importBatchId: dataBatchId, pageSize: 1000 }).items;
+    const auditLogs = this.auditRepo.findAll({ importBatchId: batchId, pageSize: 1000 }).items;
+    const remarkStats = this.batchRowRemarkRepo.getRemarkStatsForBatch(dataBatchId);
+
+    return {
+      batch: { ...batch, remarkStats },
+      rowResults: rowResultsWithRemark,
+      alarms,
+      auditLogs,
+    };
+  }
+
+  getBatchDetailAllRowsWithRemarks(
+    batchId: string,
+    operator: string,
+    filters: BatchDetailFilters = {}
+  ): BatchDetailAllRowsWithRemarks {
+    checkViewBatchesPermission(operator);
+
+    const batch = this.importBatchRepo.findById(batchId);
+    if (!batch) {
+      throw new NotFoundError(`导入批次"${batchId}"不存在`, { batchId });
+    }
+
+    if (batch.status === BatchStatus.ROLLED_BACK) {
+      throw new BusinessError(
+        `导入批次"${batchId}"已回滚，仅可查看批次元信息`,
+        'BATCH_ROLLED_BACK',
+        { batchId, status: batch.status }
+      );
+    }
+
+    const dataBatchId = batch.originalBatchId || batchId;
+
+    const rowStatusFilter = filters.rowStatus === 'all' ? undefined : filters.rowStatus;
+
+    let rowResults = this.batchRowResultRepo.findAllByBatchId(dataBatchId);
+    if (rowStatusFilter) {
+      rowResults = rowResults.filter(r => r.status === rowStatusFilter);
+    }
+
+    const allRemarks = this.batchRowRemarkRepo.findByBatchId(dataBatchId);
+    const rowResultsWithRemark = this.joinRemarksWithRows(rowResults, allRemarks);
+
+    const alarms = this.alarmRepo.findAll({ importBatchId: dataBatchId, pageSize: 1000 }).items;
+    const auditLogs = this.auditRepo.findAll({ importBatchId: batchId, pageSize: 1000 }).items;
+    const remarkStats = this.batchRowRemarkRepo.getRemarkStatsForBatch(dataBatchId);
+
+    return {
+      batch: { ...batch, remarkStats },
+      rowResults: rowResultsWithRemark,
+      alarms,
+      auditLogs,
+    };
+  }
+
+  upsertRowRemark(
+    batchId: string,
+    rowIndex: number,
+    remarkContent: string,
+    operator: string
+  ): UpsertRemarkResult {
+    checkManageRowRemarksPermission(operator);
+
+    const batch = this.importBatchRepo.findById(batchId);
+    if (!batch) {
+      throw new NotFoundError(`导入批次"${batchId}"不存在`, { batchId });
+    }
+
+    if (batch.status === BatchStatus.ROLLED_BACK) {
+      throw new BusinessError(
+        `导入批次"${batchId}"已回滚，无法添加备注`,
+        'BATCH_ROLLED_BACK',
+        { batchId, status: batch.status }
+      );
+    }
+
+    const dataBatchId = batch.originalBatchId || batchId;
+
+    const rowResult = this.batchRowResultRepo.findAllByBatchId(dataBatchId)
+      .find(r => r.rowIndex === rowIndex);
+
+    if (!rowResult) {
+      throw new NotFoundError(
+        `批次"${batchId}"中不存在行号"${rowIndex}"`,
+        { batchId, rowIndex }
+      );
+    }
+
+    if (rowResult.status !== RowStatus.FAILED) {
+      throw new BusinessError(
+        `仅能对失败行添加备注，行号"${rowIndex}"的状态是"${rowResult.status}"`,
+        'ROW_NOT_FAILED',
+        { batchId, rowIndex, rowStatus: rowResult.status }
+      );
+    }
+
+    const isClear = remarkContent.trim() === '';
+    const now = Date.now();
+
+    if (isClear) {
+      const existingRemark = this.batchRowRemarkRepo.findByBatchIdAndRowIndex(dataBatchId, rowIndex);
+      if (!existingRemark) {
+        return {
+          remark: {
+            importBatchId: dataBatchId,
+            rowIndex,
+            remarkContent: '',
+            handledBy: operator,
+            handledAt: now,
+          },
+          isNew: false,
+          isClear: true,
+        };
+      }
+
+      this.batchRowRemarkRepo.deleteByBatchIdAndRowIndex(dataBatchId, rowIndex);
+
+      this.auditRepo.create({
+        operationType: OperationType.BATCH_ROW_REMARK_CLEAR,
+        entityId: `${dataBatchId}-row-${rowIndex}`,
+        entityType: 'batch_row_remark',
+        operator,
+        details: `清空批次"${batchId}"行号"${rowIndex}"的异常处置备注，原备注: ${existingRemark.remarkContent}`,
+        importBatchId: batchId,
+      });
+
+      return {
+        remark: {
+          ...existingRemark,
+          remarkContent: '',
+          handledBy: operator,
+          handledAt: now,
+          updatedAt: now,
+        },
+        isNew: false,
+        isClear: true,
+      };
+    }
+
+    const { remark, isNew } = this.batchRowRemarkRepo.upsert({
+      importBatchId: dataBatchId,
+      rowIndex,
+      remarkContent: remarkContent.trim(),
+      handledBy: operator,
+      handledAt: now,
+    });
+
+    this.auditRepo.create({
+      operationType: OperationType.BATCH_ROW_REMARK_UPDATE,
+      entityId: `${dataBatchId}-row-${rowIndex}`,
+      entityType: 'batch_row_remark',
+      operator,
+      details: `${isNew ? '新增' : '更新'}批次"${batchId}"行号"${rowIndex}"的异常处置备注: ${remarkContent.trim()}`,
+      importBatchId: batchId,
+    });
+
+    return { remark, isNew, isClear: false };
+  }
+
+  getRowRemark(
+    batchId: string,
+    rowIndex: number,
+    operator: string
+  ): BatchRowRemark | null {
+    checkViewBatchesPermission(operator);
+
+    const batch = this.importBatchRepo.findById(batchId);
+    if (!batch) {
+      throw new NotFoundError(`导入批次"${batchId}"不存在`, { batchId });
+    }
+
+    const dataBatchId = batch.originalBatchId || batchId;
+
+    return this.batchRowRemarkRepo.findByBatchIdAndRowIndex(dataBatchId, rowIndex);
+  }
+
   exportBatchDetail(
     batchId: string,
     format: 'json' | 'csv',
@@ -580,11 +826,23 @@ export class ReadingImportService {
   ): { content: string; contentType: string; filename: string } {
     checkExportBatchesPermission(operator);
 
-    const detail = this.getBatchDetailAllRows(batchId, operator, filters);
+    const detail = this.getBatchDetailAllRowsWithRemarks(batchId, operator, filters);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
-    const orderedBatch = formatExportRow(detail.batch, EXPORT_BATCH_FIELDS);
-    const orderedRows = detail.rowResults.map(r => formatExportRow(r, EXPORT_ROW_FIELDS));
+    const batchWithStats = { ...detail.batch };
+    const remarkStats = (batchWithStats as any).remarkStats;
+    const orderedBatch = formatExportRow(batchWithStats, EXPORT_BATCH_FIELDS);
+    (orderedBatch as any).remarkStats = remarkStats;
+
+    const orderedRows = detail.rowResults.map(r => {
+      const rowExport: any = formatExportRow(r, EXPORT_ROW_FIELDS.filter(f => f !== 'remark'));
+      if (r.remark) {
+        rowExport.remark = formatExportRow(r.remark, EXPORT_REMARK_FIELDS);
+      } else {
+        rowExport.remark = null;
+      }
+      return rowExport;
+    });
     const orderedAlarms = detail.alarms.map(a => formatExportRow(a, EXPORT_ALARM_FIELDS));
     const orderedAuditLogs = detail.auditLogs.map(l => formatExportRow(l, EXPORT_AUDIT_FIELDS));
 
@@ -608,14 +866,29 @@ export class ReadingImportService {
 
     const csvLines: string[] = [];
     csvLines.push('=== 批次信息 ===');
-    csvLines.push(EXPORT_BATCH_FIELDS.join(','));
-    csvLines.push(exportToCsvLine(EXPORT_BATCH_FIELDS.map(f => orderedBatch[f as string])));
+    const batchFields = [...EXPORT_BATCH_FIELDS, 'remarkStats'];
+    csvLines.push(batchFields.join(','));
+    const batchValues = EXPORT_BATCH_FIELDS.map(f => orderedBatch[f as string]);
+    batchValues.push(JSON.stringify(remarkStats));
+    csvLines.push(exportToCsvLine(batchValues));
 
     csvLines.push('');
     csvLines.push('=== 逐行结果 ===');
-    csvLines.push(EXPORT_ROW_FIELDS.join(','));
+    const rowFields = EXPORT_ROW_FIELDS.filter(f => f !== 'remark');
+    const csvRowFields = [...rowFields, ...EXPORT_REMARK_FIELDS.map(f => `remark_${f}`)];
+    csvLines.push(csvRowFields.join(','));
     for (const row of orderedRows) {
-      csvLines.push(exportToCsvLine(EXPORT_ROW_FIELDS.map(f => row[f as string])));
+      const rowValues = rowFields.map(f => row[f as string]);
+      if (row.remark) {
+        for (const f of EXPORT_REMARK_FIELDS) {
+          rowValues.push(row.remark[f]);
+        }
+      } else {
+        for (const f of EXPORT_REMARK_FIELDS) {
+          rowValues.push('');
+        }
+      }
+      csvLines.push(exportToCsvLine(rowValues));
     }
 
     csvLines.push('');

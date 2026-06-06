@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { ServiceContainer } from '../domain/services';
-import { validateQuery, validateBody, queryFiltersSchema, batchQueryFiltersSchema, batchDetailSchema } from '../validation';
+import { validateQuery, validateBody, validateParams, queryFiltersSchema, batchQueryFiltersSchema, batchDetailSchema, upsertRemarkSchema, remarkRowParamSchema } from '../validation';
 import { ApiResponse } from '../types';
 import { Readable } from 'stream';
 import { checkImportPermission, checkDryRunPermission, checkViewBatchesPermission, checkExportBatchesPermission } from '../domain/rules';
@@ -101,11 +101,24 @@ router.get(
   async (req: Request, res: Response<ApiResponse>, next: NextFunction) => {
     try {
       const services = ServiceContainer.getInstanceSync();
-      const { importBatchRepo } = services;
+      const { importBatchRepo, batchRowRemarkRepo } = services;
       const operator = (req.headers['x-user-id'] as string) || 'admin';
       checkViewBatchesPermission(operator);
       const result = importBatchRepo.findAll(req.query as any);
-      res.json({ success: true, data: result });
+
+      const itemsWithRemarkStats = result.items.map(batch => {
+        const dataBatchId = (batch as any).originalBatchId || batch.id;
+        const remarkStats = batchRowRemarkRepo.getRemarkStatsForBatch(dataBatchId);
+        return { ...batch, remarkStats };
+      });
+
+      res.json({
+        success: true,
+        data: {
+          ...result,
+          items: itemsWithRemarkStats,
+        },
+      });
     } catch (error) {
       next(error);
     }
@@ -141,7 +154,7 @@ router.get(
         return res.send(content);
       }
 
-      const detail = readingImportService.getBatchDetail(req.params.id, operator, filters);
+      const detail = readingImportService.getBatchDetailWithRemarks(req.params.id, operator, filters);
       res.json({ success: true, data: detail });
     } catch (error) {
       next(error);
@@ -176,6 +189,63 @@ router.get(
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(content);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.put(
+  '/batches/:batchId/rows/:rowIndex/remark',
+  validateParams(remarkRowParamSchema),
+  validateBody(upsertRemarkSchema),
+  async (req: Request, res: Response<ApiResponse>, next: NextFunction) => {
+    try {
+      const services = ServiceContainer.getInstanceSync();
+      const { readingImportService } = services;
+      const operator = (req.headers['x-user-id'] as string) || 'admin';
+      const { batchId, rowIndex } = req.params as any;
+      const { remarkContent } = req.body as any;
+
+      const result = readingImportService.upsertRowRemark(
+        batchId,
+        parseInt(rowIndex, 10),
+        remarkContent,
+        operator
+      );
+
+      res.json({
+        success: true,
+        data: result,
+        message: result.isClear
+          ? '备注已清空'
+          : result.isNew
+            ? '备注已添加'
+            : '备注已更新',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.get(
+  '/batches/:batchId/rows/:rowIndex/remark',
+  validateParams(remarkRowParamSchema),
+  async (req: Request, res: Response<ApiResponse>, next: NextFunction) => {
+    try {
+      const services = ServiceContainer.getInstanceSync();
+      const { readingImportService } = services;
+      const operator = (req.headers['x-user-id'] as string) || 'admin';
+      const { batchId, rowIndex } = req.params as any;
+
+      const remark = readingImportService.getRowRemark(
+        batchId,
+        parseInt(rowIndex, 10),
+        operator
+      );
+
+      res.json({ success: true, data: remark });
     } catch (error) {
       next(error);
     }

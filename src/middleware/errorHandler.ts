@@ -28,6 +28,7 @@ export function errorHandler(
   if (error instanceof UnauthorizedError) {
     res.status(403).json({
       success: false,
+      code: error.code,
       message: error.message,
     });
     return;
@@ -36,6 +37,7 @@ export function errorHandler(
   if (error instanceof NotFoundError) {
     res.status(404).json({
       success: false,
+      code: error.code,
       message: error.message,
     });
     return;
@@ -44,6 +46,7 @@ export function errorHandler(
   if (error instanceof ConflictError) {
     res.status(409).json({
       success: false,
+      code: error.code,
       message: error.message,
     });
     return;
@@ -52,6 +55,7 @@ export function errorHandler(
   if (error instanceof BusinessError) {
     res.status(400).json({
       success: false,
+      code: error.code,
       message: error.message,
     });
     return;

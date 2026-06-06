@@ -181,15 +181,15 @@ open → acknowledged → recovered → closed
 
 | 角色 | 权限 |
 |------|------|
-| `admin` | 全部权限（设备管理、阈值配置、告警确认/关闭、预检、导入、导出、查看批次） |
-| `manager_zhang` | 告警确认/关闭、预检、导入、导出、查看批次 |
-| `operator_li` | 预检、导入、导出、查看批次 |
-| `viewer_wang` | 查看批次、导出（无预检、无导入、无告警确认） |
+| `admin` | 全部权限（设备管理、阈值配置、告警确认/关闭、预检、导入、导出、查看批次、**异常行备注管理**） |
+| `manager_zhang` | 告警确认/关闭、预检、导入、导出、查看批次、**异常行备注管理** |
+| `operator_li` | 预检、导入、导出、查看批次（仅查看备注，不可修改） |
+| `viewer_wang` | 查看批次、导出（无预检、无导入、无告警确认，仅查看备注） |
 
 **权限控制细节**：
-- 👁️ `viewer`: 只能查看批次详情和导出数据
-- 📥 `operator`: 可以进行预检和正式导入
-- 🔧 `manager/admin`: 可以确认和关闭告警
+- 👁️ `viewer`: 只能查看批次详情和导出数据，可查看备注但不可修改
+- 📥 `operator`: 可以进行预检和正式导入，可查看备注但不可修改
+- 🔧 `manager/admin`: 可以确认和关闭告警，可以**添加、修改、清空异常行备注**
 
 **失败路径拦截**：
 - ❌ 未授权确认 → 403 无权限
@@ -206,6 +206,8 @@ open → acknowledged → recovered → closed
 - 📊 逐行结果（每行的成功/失败状态、错误信息）
 - ⚠️ 关联的告警记录
 - 📝 关联的审计事件
+- 📑 **异常行处置备注统计**（已备注/未备注失败行数）
+- 💬 **每行失败行的处置备注**（处理人、处理时间、原因）
 
 **支持的批次状态：
 - `pending`: 待处理
@@ -214,12 +216,20 @@ open → acknowledged → recovered → closed
 - `failed`: 失败
 - `rolled_back`: 已回滚
 
+**异常行处置备注能力**：
+- ✅ `manager/admin` 可以对失败行**添加、修改、清空**处置备注
+- 👁️ 所有角色均可**查看**备注和**导出**包含备注的数据
+- 🔄 同一行被重复修改时保留最新备注和一条审计日志
+- 🗑️ 空备注视为清空
+- 💾 备注包含：`remarkContent`（原因）、`handledBy`（处理人）、`handledAt`（处理时间）
+
 ### 3.3 JSON/CSV 导出
 
 **导出功能特性：
 - 支持 `JSON` 和 `CSV` 两种格式
 - 导出内容与查询结果完全一致
-- viewer 角色可以查看和导出，operator 可以预检和导入，manager/admin 可以确认和关闭告警
+- 导出包含**异常行处置备注**信息（统计信息和每行备注）
+- viewer 角色可以查看和导出，operator 角色可以预检和导入，manager/admin 可以确认和关闭告警、管理备注
 
 ### 4. 事务保障
 
@@ -503,7 +513,7 @@ GET /api/readings/batches/{batchId}
 X-User-Id: viewer_wang
 ```
 
-**响应示例**：
+**响应示例**（包含备注统计和每行备注）：
 ```json
 {
   "success": true,
@@ -517,11 +527,26 @@ X-User-Id: viewer_wang
       "status": "completed",
       "createdBy": "operator_li",
       "createdAt": 1705305600000,
-      "completedAt": 1705305610000
+      "completedAt": 1705305610000,
+      "remarkStats": {
+        "totalFailedRows": 4,
+        "remarkedRows": 2,
+        "unremarkedRows": 2
+      }
     },
     "rowResults": [
-      {"rowIndex": 1, "deviceId": "FREEZER-001", "temperature": -22.5, "status": "success", "errorMessage": null},
-      {"rowIndex": 2, "deviceId": "UNKNOWN-999", "status": "failed", "errorMessage": "设备不存在"}
+      {"rowIndex": 1, "deviceId": "FREEZER-001", "temperature": -22.5, "status": "success", "errorMessage": null, "remark": null},
+      {
+        "rowIndex": 2,
+        "deviceId": "UNKNOWN-999",
+        "status": "failed",
+        "errorMessage": "设备不存在",
+        "remark": {
+          "remarkContent": "设备不存在，已通知门店补充设备台账",
+          "handledBy": "manager_zhang",
+          "handledAt": 1705305700000
+        }
+      }
     ],
     "alarms": [
       {"id": "al-xxxx", "deviceId": "FREEZER-001", "type": "high_temp", "status": "open"}
@@ -530,6 +555,185 @@ X-User-Id: viewer_wang
       {"operationType": "reading_import", "operator": "operator_li", "details": "导入完成"}
     ]
   }
+}
+```
+
+#### 查询批次列表（包含备注统计）
+
+```http
+GET /api/readings/batches?batchStatus=completed&page=1&pageSize=50
+X-User-Id: viewer_wang
+```
+
+**响应示例**（每个批次包含备注统计）：
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "batch-xxxx",
+        "fileName": "temperature_readings.csv",
+        "totalCount": 8,
+        "successCount": 4,
+        "failedCount": 4,
+        "status": "completed",
+        "createdBy": "operator_li",
+        "createdAt": 1705305600000,
+        "remarkStats": {
+          "totalFailedRows": 4,
+          "remarkedRows": 2,
+          "unremarkedRows": 2
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 50
+  }
+}
+```
+
+#### 添加/修改/清空异常行处置备注
+
+```http
+PUT /api/readings/batches/{batchId}/rows/{rowIndex}/remark
+Content-Type: application/json
+X-User-Id: manager_zhang
+
+{
+  "remarkContent": "设备不存在，已通知门店补充设备台账"
+}
+```
+
+**说明**：
+- 仅 `manager`/`admin` 角色可调用
+- `remarkContent` 为空字符串或纯空格时视为**清空备注**
+- 同一行重复修改时保留最新备注，并记录审计日志
+- 只能对**失败行**添加备注，成功行会返回错误
+
+**成功响应示例**（新增）：
+```json
+{
+  "success": true,
+  "data": {
+    "remark": {
+      "id": "remark-xxxx",
+      "importBatchId": "batch-xxxx",
+      "rowIndex": 2,
+      "remarkContent": "设备不存在，已通知门店补充设备台账",
+      "handledBy": "manager_zhang",
+      "handledAt": 1705305700000,
+      "createdAt": 1705305700000,
+      "updatedAt": 1705305700000
+    },
+    "isNew": true,
+    "isClear": false
+  },
+  "message": "备注已添加"
+}
+```
+
+**成功响应示例**（修改）：
+```json
+{
+  "success": true,
+  "data": {
+    "remark": {
+      "id": "remark-xxxx",
+      "importBatchId": "batch-xxxx",
+      "rowIndex": 2,
+      "remarkContent": "设备不存在，已通知门店补充设备台账，门店承诺3日内完成",
+      "handledBy": "admin",
+      "handledAt": 1705305800000,
+      "createdAt": 1705305700000,
+      "updatedAt": 1705305800000
+    },
+    "isNew": false,
+    "isClear": false
+  },
+  "message": "备注已更新"
+}
+```
+
+**成功响应示例**（清空）：
+```json
+{
+  "success": true,
+  "data": {
+    "remark": {
+      "id": "remark-xxxx",
+      "importBatchId": "batch-xxxx",
+      "rowIndex": 2,
+      "remarkContent": "",
+      "handledBy": "manager_zhang",
+      "handledAt": 1705305900000,
+      "createdAt": 1705305700000,
+      "updatedAt": 1705305900000
+    },
+    "isNew": false,
+    "isClear": true
+  },
+  "message": "备注已清空"
+}
+```
+
+**无权限响应**（403）：
+```json
+{
+  "success": false,
+  "code": "UNAUTHORIZED",
+  "message": "用户\"operator_li\"没有\"manage_row_remarks\"操作权限，请联系管理员授权"
+}
+```
+
+**无效批次响应**（404）：
+```json
+{
+  "success": false,
+  "code": "NOT_FOUND",
+  "message": "导入批次\"invalid-batch-id\"不存在"
+}
+```
+
+**无效行号响应**（404）：
+```json
+{
+  "success": false,
+  "code": "NOT_FOUND",
+  "message": "批次\"batch-xxxx\"中不存在行号\"9999\""
+}
+```
+
+#### 查询单行备注
+
+```http
+GET /api/readings/batches/{batchId}/rows/{rowIndex}/remark
+X-User-Id: viewer_wang
+```
+
+**响应示例**（有备注）：
+```json
+{
+  "success": true,
+  "data": {
+    "id": "remark-xxxx",
+    "importBatchId": "batch-xxxx",
+    "rowIndex": 2,
+    "remarkContent": "设备不存在，已通知门店补充设备台账",
+    "handledBy": "manager_zhang",
+    "handledAt": 1705305700000,
+    "createdAt": 1705305700000,
+    "updatedAt": 1705305700000
+  }
+}
+```
+
+**响应示例**（无备注）：
+```json
+{
+  "success": true,
+  "data": null
 }
 ```
 
@@ -624,7 +828,32 @@ curl "http://localhost:3000/api/readings/batches/{batchId}" \
   -H "X-User-Id: viewer_wang"
 ```
 
-> 返回批次信息、逐行结果、关联告警、审计日志
+> 返回批次信息、逐行结果、关联告警、审计日志、备注统计、每行备注
+
+**步骤5.5：对失败行添加处置备注（manager/admin 权限）**
+```bash
+# 对失败行添加备注
+curl -X PUT "http://localhost:3000/api/readings/batches/{batchId}/rows/2/remark" \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: manager_zhang" \
+  -d '{"remarkContent": "设备不存在，已通知门店补充设备台账"}'
+
+# 修改备注
+curl -X PUT "http://localhost:3000/api/readings/batches/{batchId}/rows/2/remark" \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: admin" \
+  -d '{"remarkContent": "设备不存在，已通知门店补充设备台账，门店承诺3日内完成"}'
+
+# 清空备注（传空字符串）
+curl -X PUT "http://localhost:3000/api/readings/batches/{batchId}/rows/2/remark" \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: manager_zhang" \
+  -d '{"remarkContent": ""}'
+
+# 查看单行备注（所有角色均可查看）
+curl "http://localhost:3000/api/readings/batches/{batchId}/rows/2/remark" \
+  -H "X-User-Id: viewer_wang"
+```
 
 **步骤6：导出批次详情**
 ```bash
@@ -791,8 +1020,9 @@ curl -X POST http://localhost:3000/api/readings/import \
 **新增数据表**：
 - `import_batches`: 导入批次主表（新增 `status`、`completed_at` 字段）
 - `batch_row_results`: 批次逐行结果表（记录每行的校验结果）
+- `batch_row_remarks`: **异常行处置备注表**（记录对失败行的处置备注，包含处理人、处理时间、原因）
 
-重启服务后所有数据自动恢复。
+重启服务后所有数据自动恢复，包括备注信息。
 
 ### 事务回滚机制
 

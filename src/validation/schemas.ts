@@ -126,6 +126,15 @@ export const batchQueryFiltersSchema = queryFiltersSchema.extend({
   ]).optional(),
 });
 
+export const upsertRemarkSchema = z.object({
+  remarkContent: z.string().max(1000, '备注内容不能超过1000字符'),
+});
+
+export const remarkRowParamSchema = z.object({
+  batchId: z.string().min(1, '批次ID不能为空'),
+  rowIndex: z.coerce.number().int().positive('行号必须是正整数'),
+});
+
 export type CreateDeviceInput = z.infer<typeof createDeviceSchema>;
 export type UpdateDeviceInput = z.infer<typeof updateDeviceSchema>;
 export type ThresholdInput = z.infer<typeof thresholdSchema>;
@@ -140,3 +149,5 @@ export type DryRunCsvInput = z.infer<typeof dryRunCsvSchema>;
 export type BatchDetailInput = z.infer<typeof batchDetailSchema>;
 export type BatchQueryFiltersInput = z.infer<typeof batchQueryFiltersSchema>;
 export type BatchDetailFiltersInput = z.infer<typeof batchDetailSchema>;
+export type UpsertRemarkInput = z.infer<typeof upsertRemarkSchema>;
+export type RemarkRowParamInput = z.infer<typeof remarkRowParamSchema>;
