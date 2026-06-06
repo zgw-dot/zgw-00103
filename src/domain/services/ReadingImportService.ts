@@ -1,5 +1,6 @@
 import { Readable } from 'stream';
 import csvParser from 'csv-parser';
+import crypto from 'crypto';
 import { runInTransaction } from '../../storage/database';
 import {
   DeviceRepository,
@@ -9,6 +10,7 @@ import {
   ThresholdRepository,
   AlarmRepository,
   BatchRowResultRepository,
+  IdempotencyKeyRepository,
 } from '../../storage/repositories';
 import { AlarmService } from './AlarmService';
 import {
@@ -42,7 +44,7 @@ import {
   parseDateTime,
 } from '../rules';
 import logger from '../../utils/logger';
-import { NotFoundError, BusinessError } from '../../utils/errors';
+import { NotFoundError, BusinessError, ConflictError } from '../../utils/errors';
 
 const EXPORT_ROW_FIELDS: Array<keyof BatchRowResult> = [
   'rowIndex',
@@ -102,6 +104,11 @@ const EXPORT_BATCH_FIELDS: Array<keyof ImportBatch> = [
   'successCount',
   'failedCount',
   'errorDetails',
+  'idempotencyKey',
+  'fileContentHash',
+  'isIdempotencyHit',
+  'originalBatchId',
+  'submitCount',
 ];
 
 function formatValue(value: any): string {
@@ -136,6 +143,10 @@ function exportToCsvLine(values: any[]): string {
   }).join(',');
 }
 
+function computeFileHash(buffer: Buffer): string {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
 export class ReadingImportService {
 
   constructor(
@@ -146,7 +157,8 @@ export class ReadingImportService {
     private auditRepo: AuditRepository,
     private alarmService: AlarmService,
     private thresholdRepo: ThresholdRepository,
-    private alarmRepo: AlarmRepository
+    private alarmRepo: AlarmRepository,
+    private idempotencyKeyRepo: IdempotencyKeyRepository
   ) {}
 
   private async parseCsvWithAutoHeaderDetection(fileStream: Readable): Promise<CsvReadingRow[]> {
@@ -215,12 +227,115 @@ export class ReadingImportService {
   async importFromCsv(
     fileStream: Readable,
     fileName: string,
-    operator: string
+    operator: string,
+    idempotencyKey?: string
   ): Promise<ImportResult> {
     checkImportPermission(operator);
 
-    const rows = await this.parseCsvWithAutoHeaderDetection(fileStream);
+    const buffer = await this.streamToBuffer(fileStream);
+    const fileContentHash = computeFileHash(buffer);
+    const rows = await this.parseCsvWithAutoHeaderDetection(Readable.from(buffer));
 
+    if (idempotencyKey) {
+      const idemRecord = this.idempotencyKeyRepo.findByKeyAndOperator(idempotencyKey, operator);
+
+      if (idemRecord) {
+        if (idemRecord.fileContentHash === fileContentHash) {
+          return this.handleIdempotencyHit(idemRecord, fileContentHash, operator, idempotencyKey);
+        } else {
+          return this.handleIdempotencyConflict(idemRecord, fileContentHash, operator, idempotencyKey);
+        }
+      }
+    }
+
+    return await this.performActualImport(
+      rows,
+      fileName,
+      operator,
+      fileContentHash,
+      idempotencyKey
+    );
+  }
+
+  private async streamToBuffer(stream: Readable): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
+  private handleIdempotencyHit(
+    idemRecord: { originalBatchId: string; submitCount: number; id: string },
+    fileContentHash: string,
+    operator: string,
+    idempotencyKey: string
+  ): ImportResult {
+    const updatedIdem = this.idempotencyKeyRepo.updateSubmitCount(idemRecord.id)!;
+    const originalBatch = this.importBatchRepo.findById(idemRecord.originalBatchId)!;
+
+    this.importBatchRepo.update(originalBatch.id, {
+      submitCount: updatedIdem.submitCount,
+    });
+
+    this.auditRepo.create({
+      operationType: OperationType.IDEMPOTENCY_HIT,
+      entityId: originalBatch.id,
+      entityType: 'import_batch',
+      operator,
+      details: `幂等键命中，返回原始批次"${originalBatch.id}"，当前提交次数: ${updatedIdem.submitCount}`,
+      importBatchId: originalBatch.id,
+    });
+
+    return {
+      batchId: originalBatch.id,
+      successCount: originalBatch.successCount,
+      failedCount: originalBatch.failedCount,
+      errors: originalBatch.errorDetails ? originalBatch.errorDetails.split('; ') : [],
+      generatedAlarms: 0,
+      recoveredAlarms: 0,
+      status: originalBatch.status,
+      idempotencyKey,
+      isIdempotencyHit: true,
+      originalBatchId: originalBatch.id,
+      submitCount: updatedIdem.submitCount,
+    };
+  }
+
+  private handleIdempotencyConflict(
+    idemRecord: { originalBatchId: string; fileContentHash: string; id: string },
+    fileContentHash: string,
+    operator: string,
+    idempotencyKey: string
+  ): ImportResult {
+    this.auditRepo.create({
+      operationType: OperationType.IDEMPOTENCY_CONFLICT,
+      entityId: idemRecord.originalBatchId,
+      entityType: 'import_batch',
+      operator,
+      details: `幂等键冲突！同一key"${idempotencyKey}"提交了不同的文件内容。原始哈希: ${idemRecord.fileContentHash.slice(0, 16)}..., 当前哈希: ${fileContentHash.slice(0, 16)}...`,
+      importBatchId: idemRecord.originalBatchId,
+    });
+
+    throw new ConflictError(
+      `幂等键"${idempotencyKey}"已被使用，但文件内容不同。请使用不同的key或保持文件内容一致。`,
+      {
+        idempotencyKey,
+        operator,
+        originalBatchId: idemRecord.originalBatchId,
+        originalFileHash: idemRecord.fileContentHash,
+        currentFileHash: fileContentHash,
+      }
+    );
+  }
+
+  private async performActualImport(
+    rows: CsvReadingRow[],
+    fileName: string,
+    operator: string,
+    fileContentHash: string,
+    idempotencyKey?: string
+  ): Promise<ImportResult> {
     const context: PreCheckContext = {
       lastReadingTimes: new Map<string, number>(),
       seenTimestamps: new Map<string, Set<number>>(),
@@ -270,6 +385,10 @@ export class ReadingImportService {
         errorDetails: '',
         createdBy: operator,
         status: BatchStatus.PROCESSING,
+        idempotencyKey,
+        fileContentHash,
+        isIdempotencyHit: false,
+        submitCount: 1,
       });
       batchId = batch.id;
 
@@ -326,12 +445,21 @@ export class ReadingImportService {
         completedAt: Date.now(),
       });
 
+      if (idempotencyKey) {
+        this.idempotencyKeyRepo.create({
+          idempotencyKey,
+          operator,
+          fileContentHash,
+          originalBatchId: batch.id,
+        });
+      }
+
       this.auditRepo.create({
         operationType: OperationType.READING_IMPORT,
         entityId: batch.id,
         entityType: 'import_batch',
         operator,
-        details: `导入CSV文件"${fileName}"，共${rows.length}条，成功${successRows.length}条，失败${failedRows.length}条，生成告警${generatedAlarms}条，恢复告警${recoveredAlarms}条`,
+        details: `导入CSV文件"${fileName}"，共${rows.length}条，成功${successRows.length}条，失败${failedRows.length}条，生成告警${generatedAlarms}条，恢复告警${recoveredAlarms}条${idempotencyKey ? `，幂等键: ${idempotencyKey}` : ''}`,
         importBatchId: batch.id,
       });
     });
@@ -344,6 +472,9 @@ export class ReadingImportService {
       generatedAlarms,
       recoveredAlarms,
       status: BatchStatus.COMPLETED,
+      idempotencyKey,
+      isIdempotencyHit: false,
+      submitCount: 1,
     };
   }
 

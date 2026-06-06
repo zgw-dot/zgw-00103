@@ -6,6 +6,7 @@ import {
   AlarmRepository,
   AuditRepository,
   BatchRowResultRepository,
+  IdempotencyKeyRepository,
 } from '../../storage/repositories';
 import { getDatabase } from '../../storage/database';
 import { DeviceService } from './DeviceService';
@@ -22,6 +23,7 @@ export class ServiceContainer {
   readonly alarmRepo: AlarmRepository;
   readonly auditRepo: AuditRepository;
   readonly batchRowResultRepo: BatchRowResultRepository;
+  readonly idempotencyKeyRepo: IdempotencyKeyRepository;
 
   readonly deviceService: DeviceService;
   readonly thresholdService: ThresholdService;
@@ -40,6 +42,7 @@ export class ServiceContainer {
     this.alarmRepo = new AlarmRepository();
     this.auditRepo = new AuditRepository();
     this.batchRowResultRepo = new BatchRowResultRepository();
+    this.idempotencyKeyRepo = new IdempotencyKeyRepository();
 
     this.deviceService = new DeviceService(this.deviceRepo, this.auditRepo);
     this.thresholdService = new ThresholdService(this.thresholdRepo, this.auditRepo, this.deviceRepo);
@@ -52,7 +55,8 @@ export class ServiceContainer {
       this.auditRepo,
       this.alarmService,
       this.thresholdRepo,
-      this.alarmRepo
+      this.alarmRepo,
+      this.idempotencyKeyRepo
     );
     this.auditService = new AuditService(this.auditRepo);
   }

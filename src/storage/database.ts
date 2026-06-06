@@ -78,7 +78,24 @@ function initializeTables(db: Database): void {
       status TEXT NOT NULL DEFAULT 'pending',
       created_at INTEGER NOT NULL,
       created_by TEXT NOT NULL,
-      completed_at INTEGER
+      completed_at INTEGER,
+      idempotency_key TEXT,
+      file_content_hash TEXT,
+      is_idempotency_hit INTEGER NOT NULL DEFAULT 0,
+      original_batch_id TEXT,
+      submit_count INTEGER NOT NULL DEFAULT 1
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS idempotency_keys (
+      id TEXT PRIMARY KEY,
+      idempotency_key TEXT NOT NULL,
+      operator TEXT NOT NULL,
+      file_content_hash TEXT NOT NULL,
+      original_batch_id TEXT NOT NULL,
+      submit_count INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      last_submit_at INTEGER NOT NULL,
+      UNIQUE(idempotency_key, operator)
     )`,
 
     `CREATE TABLE IF NOT EXISTS batch_row_results (
@@ -148,6 +165,9 @@ function initializeTables(db: Database): void {
     `CREATE INDEX IF NOT EXISTS idx_audit_store ON audit_logs(store_id)`,
     `CREATE INDEX IF NOT EXISTS idx_audit_batch ON audit_logs(import_batch_id)`,
     `CREATE INDEX IF NOT EXISTS idx_audit_alarm ON audit_logs(alarm_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_import_batches_idempotency ON import_batches(idempotency_key, created_by)`,
+    `CREATE INDEX IF NOT EXISTS idx_import_batches_original ON import_batches(original_batch_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_idempotency_keys_operator ON idempotency_keys(operator)`,
   ];
 
   for (const sql of createTables) {

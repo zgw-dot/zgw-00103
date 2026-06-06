@@ -5,3 +5,4 @@ export { ReadingRepository } from './ReadingRepository';
 export { AlarmRepository } from './AlarmRepository';
 export { AuditRepository } from './AuditRepository';
 export { BatchRowResultRepository } from './BatchRowResultRepository';
+export { IdempotencyKeyRepository } from './IdempotencyKeyRepository';

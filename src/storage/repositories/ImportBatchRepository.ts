@@ -9,8 +9,11 @@ export class ImportBatchRepository {
     const now = Date.now();
     const status = batch.status || BatchStatus.PENDING;
     const stmt = prepare(`
-      INSERT INTO import_batches (id, file_name, total_count, success_count, failed_count, error_details, status, created_at, created_by, completed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO import_batches (
+        id, file_name, total_count, success_count, failed_count, error_details,
+        status, created_at, created_by, completed_at,
+        idempotency_key, file_content_hash, is_idempotency_hit, original_batch_id, submit_count
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       id,
@@ -22,7 +25,12 @@ export class ImportBatchRepository {
       status,
       now,
       batch.createdBy,
-      null
+      null,
+      batch.idempotencyKey || null,
+      batch.fileContentHash || null,
+      batch.isIdempotencyHit ? 1 : 0,
+      batch.originalBatchId || null,
+      batch.submitCount || 1
     );
     saveDatabase();
     return { ...batch, id, status, createdAt: now };
@@ -76,7 +84,7 @@ export class ImportBatchRepository {
     };
   }
 
-  update(id: string, data: Partial<Pick<ImportBatch, 'successCount' | 'failedCount' | 'errorDetails' | 'status' | 'completedAt'>>): ImportBatch | null {
+  update(id: string, data: Partial<Pick<ImportBatch, 'successCount' | 'failedCount' | 'errorDetails' | 'status' | 'completedAt' | 'isIdempotencyHit' | 'originalBatchId' | 'submitCount'>>): ImportBatch | null {
     const fields: string[] = [];
     const params: any[] = [];
 
@@ -85,6 +93,9 @@ export class ImportBatchRepository {
     if (data.errorDetails !== undefined) { fields.push('error_details = ?'); params.push(data.errorDetails); }
     if (data.status !== undefined) { fields.push('status = ?'); params.push(data.status); }
     if (data.completedAt !== undefined) { fields.push('completed_at = ?'); params.push(data.completedAt); }
+    if (data.isIdempotencyHit !== undefined) { fields.push('is_idempotency_hit = ?'); params.push(data.isIdempotencyHit ? 1 : 0); }
+    if (data.originalBatchId !== undefined) { fields.push('original_batch_id = ?'); params.push(data.originalBatchId || null); }
+    if (data.submitCount !== undefined) { fields.push('submit_count = ?'); params.push(data.submitCount); }
 
     params.push(id);
 
@@ -125,6 +136,11 @@ export class ImportBatchRepository {
       createdAt: row.created_at,
       createdBy: row.created_by,
       completedAt: row.completed_at,
+      idempotencyKey: row.idempotency_key,
+      fileContentHash: row.file_content_hash,
+      isIdempotencyHit: row.is_idempotency_hit === 1,
+      originalBatchId: row.original_batch_id,
+      submitCount: row.submit_count,
     };
   }
 }

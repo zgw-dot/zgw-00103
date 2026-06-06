@@ -4,7 +4,7 @@ import { ServiceContainer } from '../domain/services';
 import { validateQuery, validateBody, queryFiltersSchema, batchQueryFiltersSchema, batchDetailSchema } from '../validation';
 import { ApiResponse } from '../types';
 import { Readable } from 'stream';
-import { checkImportPermission, checkDryRunPermission } from '../domain/rules';
+import { checkImportPermission, checkDryRunPermission, checkViewBatchesPermission, checkExportBatchesPermission } from '../domain/rules';
 
 const router = Router();
 
@@ -60,6 +60,7 @@ router.post(
       const { readingImportService } = services;
 
       const operator = (req.body.operator as string) || (req.headers['x-user-id'] as string) || 'admin';
+      const idempotencyKey = (req.body.idempotencyKey as string) || (req.headers['x-idempotency-key'] as string) || undefined;
 
       checkImportPermission(operator);
 
@@ -74,13 +75,19 @@ router.post(
       const result = await readingImportService.importFromCsv(
         fileStream,
         req.file.originalname,
-        operator
+        operator,
+        idempotencyKey
       );
 
-      res.status(200).json({
+      const statusCode = result.isIdempotencyHit ? 200 : 200;
+      const hitMessage = result.isIdempotencyHit
+        ? `幂等命中，返回原始批次(提交${result.submitCount}次)`
+        : `导入成功，共${result.successCount}条`;
+
+      res.status(statusCode).json({
         success: true,
         data: result,
-        message: `导入成功，共${result.successCount}条`,
+        message: hitMessage,
       });
     } catch (error) {
       next(error);
@@ -95,6 +102,8 @@ router.get(
     try {
       const services = ServiceContainer.getInstanceSync();
       const { importBatchRepo } = services;
+      const operator = (req.headers['x-user-id'] as string) || 'admin';
+      checkViewBatchesPermission(operator);
       const result = importBatchRepo.findAll(req.query as any);
       res.json({ success: true, data: result });
     } catch (error) {

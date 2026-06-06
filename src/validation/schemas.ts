@@ -80,6 +80,7 @@ export const queryFiltersSchema = z.object({
 
 export const importCsvSchema = z.object({
   operator: z.string().min(1, '操作人不能为空'),
+  idempotencyKey: z.string().optional(),
 });
 
 export const exportSchema = queryFiltersSchema.extend({

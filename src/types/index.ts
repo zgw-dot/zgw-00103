@@ -22,7 +22,9 @@ export enum OperationType {
   READING_IMPORT = 'reading_import',
   ALARM_ACKNOWLEDGE = 'alarm_acknowledge',
   ALARM_CLOSE = 'alarm_close',
-  ALARM_RECOVER = 'alarm_recover'
+  ALARM_RECOVER = 'alarm_recover',
+  IDEMPOTENCY_HIT = 'idempotency_hit',
+  IDEMPOTENCY_CONFLICT = 'idempotency_conflict'
 }
 
 export interface Device {
@@ -66,6 +68,22 @@ export interface ImportBatch {
   createdAt: number;
   createdBy: string;
   completedAt?: number;
+  idempotencyKey?: string;
+  fileContentHash?: string;
+  isIdempotencyHit?: boolean;
+  originalBatchId?: string;
+  submitCount?: number;
+}
+
+export interface IdempotencyKeyRecord {
+  id: string;
+  idempotencyKey: string;
+  operator: string;
+  fileContentHash: string;
+  originalBatchId: string;
+  submitCount: number;
+  createdAt: number;
+  lastSubmitAt: number;
 }
 
 export interface Alarm {
@@ -215,6 +233,10 @@ export interface ImportResult {
   generatedAlarms: number;
   recoveredAlarms: number;
   status: BatchStatus;
+  idempotencyKey?: string;
+  isIdempotencyHit?: boolean;
+  originalBatchId?: string;
+  submitCount?: number;
 }
 
 export interface BatchRowResult {
