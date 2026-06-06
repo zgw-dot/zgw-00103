@@ -418,7 +418,7 @@ export const createInspectionTemplateSchema = z.object({
     { message: '日期必须是有效的时间戳（毫秒），且在2000-01-01 ~ 2100-01-01范围内' }
   ),
   devices: z.array(templateDeviceSchema).min(1, '至少需要配置一台设备'),
-  operator: z.string().min(1, '操作人不能为空'),
+  operator: z.string().optional(),
 }).refine(
   (data) => {
     const deviceIds = new Set<string>();
@@ -439,17 +439,17 @@ export const inspectionTemplateIdSchema = z.object({
 
 export const inspectionPublishSchema = z.object({
   reason: z.string().max(500, '发布原因不能超过500字符').optional(),
-  operator: z.string().min(1, '操作人不能为空'),
+  operator: z.string().optional(),
 });
 
 export const inspectionCloseSchema = z.object({
   reason: z.string().min(1, '关闭原因不能为空').max(500, '关闭原因不能超过500字符'),
-  operator: z.string().min(1, '操作人不能为空'),
+  operator: z.string().optional(),
 });
 
 export const inspectionRevokeSchema = z.object({
   reason: z.string().min(1, '撤销原因不能为空').max(500, '撤销原因不能超过500字符'),
-  operator: z.string().min(1, '操作人不能为空'),
+  operator: z.string().optional(),
 });
 
 export const submitInspectionSchema = z.object({
@@ -457,7 +457,7 @@ export const submitInspectionSchema = z.object({
   deviceId: z.string().min(1, '设备ID不能为空'),
   photos: z.array(z.string()).optional().default([]),
   remark: z.string().optional().default(''),
-  operator: z.string().min(1, '操作人不能为空'),
+  operator: z.string().optional(),
 });
 
 export const inspectionRecordIdSchema = z.object({

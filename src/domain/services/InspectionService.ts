@@ -49,50 +49,55 @@ export class InspectionService {
     private readingRepo: ReadingRepository
   ) {}
 
-  createTemplate(input: CreateInspectionTemplateInput, operator: string): InspectionTemplate {
-    checkManageInspectionTemplatesPermission(operator);
-
-    this.validateTemplateInput(input);
-
+  validateTemplateDevice(deviceConfig: InspectionTemplateDevice, templateStoreId: string): void {
     const validUsers = getTestUsers().map(u => u.id);
+
+    const device = this.deviceRepo.findById(deviceConfig.deviceId);
+    if (!device) {
+      throw new ValidationError(
+        `设备"${deviceConfig.deviceId}"不存在`,
+        'deviceId',
+        { deviceId: deviceConfig.deviceId }
+      );
+    }
+
+    this.validateDeviceNotCrossStore(deviceConfig.deviceId, device.storeId, templateStoreId);
+    this.validateDeviceActive(deviceConfig.deviceId, device.status);
+
+    if (!validUsers.includes(deviceConfig.personInCharge)) {
+      throw new ValidationError(
+        `设备"${deviceConfig.deviceId}"的负责人"${deviceConfig.personInCharge}"不存在，有效的负责人包括：${validUsers.join(', ')}`,
+        'personInCharge',
+        { deviceId: deviceConfig.deviceId, value: deviceConfig.personInCharge, validUsers }
+      );
+    }
+
+    this.validateTimeWindow(deviceConfig.timeWindow.startTime, deviceConfig.timeWindow.endTime);
+  }
+
+  validateDeviceNotCrossStore(deviceId: string, deviceStoreId: string, templateStoreId: string): void {
+    if (deviceStoreId !== templateStoreId) {
+      throw new BusinessError(
+        `设备"${deviceId}"的门店(${deviceStoreId})与模板门店(${templateStoreId})不匹配，跨门店设备不允许`,
+        'INSPECTION_CROSS_STORE_DEVICE',
+        { deviceId, deviceStoreId, templateStoreId }
+      );
+    }
+  }
+
+  validateDeviceActive(deviceId: string, deviceStatus: DeviceStatus): void {
+    if (deviceStatus !== DeviceStatus.ACTIVE) {
+      throw new ValidationError(
+        `设备"${deviceId}"已停用，不能添加到巡检模板或提交巡检`,
+        'deviceId',
+        { deviceId, deviceStatus }
+      );
+    }
+  }
+
+  validateNoDuplicateDevices(devices: InspectionTemplateDevice[]): void {
     const deviceIds = new Set<string>();
-
-    for (const deviceConfig of input.devices) {
-      const device = this.deviceRepo.findById(deviceConfig.deviceId);
-      if (!device) {
-        throw new ValidationError(
-          `设备"${deviceConfig.deviceId}"不存在`,
-          'deviceId',
-          { deviceId: deviceConfig.deviceId }
-        );
-      }
-
-      if (device.storeId !== input.storeId) {
-        throw new BusinessError(
-          `设备"${deviceConfig.deviceId}"的门店(${device.storeId})与模板门店(${input.storeId})不匹配，跨门店设备不允许`,
-          'INSPECTION_CROSS_STORE_DEVICE',
-          { deviceId: deviceConfig.deviceId, deviceStoreId: device.storeId, templateStoreId: input.storeId }
-        );
-      }
-
-      if (device.status !== DeviceStatus.ACTIVE) {
-        throw new ValidationError(
-          `设备"${deviceConfig.deviceId}"已停用，不能添加到巡检模板`,
-          'deviceId',
-          { deviceId: deviceConfig.deviceId, deviceStatus: device.status }
-        );
-      }
-
-      if (!validUsers.includes(deviceConfig.personInCharge)) {
-        throw new ValidationError(
-          `设备"${deviceConfig.deviceId}"的负责人"${deviceConfig.personInCharge}"不存在，有效的负责人包括：${validUsers.join(', ')}`,
-          'personInCharge',
-          { deviceId: deviceConfig.deviceId, value: deviceConfig.personInCharge, validUsers }
-        );
-      }
-
-      this.validateTimeWindow(deviceConfig.timeWindow.startTime, deviceConfig.timeWindow.endTime);
-
+    for (const deviceConfig of devices) {
       if (deviceIds.has(deviceConfig.deviceId)) {
         throw new ValidationError(
           `设备"${deviceConfig.deviceId}"在模板中重复出现`,
@@ -102,26 +107,116 @@ export class InspectionService {
       }
       deviceIds.add(deviceConfig.deviceId);
     }
+  }
 
+  validateNoTemplateTimeConflict(storeId: string, date: number, shift: InspectionShift, excludeTemplateId?: string): void {
     const existingTemplates = this.templateRepo.findPublishedForStoreAtDate(
-      input.storeId,
-      input.date,
-      input.shift
+      storeId,
+      date,
+      shift,
+      excludeTemplateId
     );
     if (existingTemplates.length > 0) {
       const conflictDesc = existingTemplates.map(t =>
         `模板ID: ${t.id}, 名称: ${t.name}`
       ).join('; ');
       throw new ConflictError(
-        `门店"${input.storeId}"在${new Date(input.date).toLocaleDateString('zh-CN')}的${this.getShiftText(input.shift)}班次已存在发布的巡检模板，时间窗冲突。冲突模板: ${conflictDesc}`,
+        `门店"${storeId}"在${new Date(date).toLocaleDateString('zh-CN')}的${this.getShiftText(shift)}班次已存在发布的巡检模板，时间窗冲突。冲突模板: ${conflictDesc}`,
         {
-          storeId: input.storeId,
-          date: input.date,
-          shift: input.shift,
+          storeId,
+          date,
+          shift,
           conflictingTemplates: existingTemplates.map(t => ({ id: t.id, name: t.name }))
         }
       );
     }
+  }
+
+  validateTemplateStatus(templateId: string, currentStatus: InspectionTemplateStatus, allowedStatuses: InspectionTemplateStatus[], operation: string): void {
+    if (!allowedStatuses.includes(currentStatus)) {
+      throw new ConflictError(
+        `巡检模板"${templateId}"当前状态为"${currentStatus}"，无法${operation}`,
+        { templateId, currentStatus, allowedStatuses, operation }
+      );
+    }
+  }
+
+  validateReasonProvided(reason: string | undefined, fieldName: string): void {
+    if (!reason || reason.trim().length === 0) {
+      throw new ValidationError(`${fieldName}不能为空`, 'reason');
+    }
+  }
+
+  validateDeviceInTemplate(templateId: string, deviceId: string, deviceConfig: InspectionTemplateDevice | null | undefined): void {
+    if (!deviceConfig) {
+      throw new ValidationError(
+        `设备"${deviceId}"不在模板"${templateId}"的巡检清单中`,
+        'deviceId',
+        { templateId, deviceId }
+      );
+    }
+  }
+
+  validateIsPersonInCharge(deviceId: string, operator: string, requiredPerson: string): void {
+    if (requiredPerson !== operator) {
+      throw new UnauthorizedError(
+        `用户"${operator}"不是设备"${deviceId}"的指定负责人，不能提交该设备的巡检。指定负责人为"${requiredPerson}"`,
+        { userId: operator, requiredPerson, deviceId }
+      );
+    }
+  }
+
+  validateNoDuplicateSubmission(templateId: string, deviceId: string, existingRecord: InspectionRecord | null | undefined): void {
+    if (existingRecord) {
+      throw new ConflictError(
+        `设备"${deviceId}"在模板"${templateId}"中已经提交过巡检，不允许重复提交`,
+        { templateId, deviceId, existingRecordId: existingRecord.id }
+      );
+    }
+  }
+
+  validatePhotoRequirement(deviceId: string, photos: string[] | undefined, minCount: number, required: boolean): void {
+    if (required) {
+      if (!photos || photos.length < minCount) {
+        throw new ValidationError(
+          `设备"${deviceId}"至少需要${minCount}张照片，实际提供${photos?.length || 0}张`,
+          'photos',
+          { deviceId, required: minCount, actual: photos?.length || 0 }
+        );
+      }
+    }
+  }
+
+  validateRemarkRequirement(deviceId: string, remark: string | undefined, minLength: number, required: boolean): void {
+    if (required) {
+      if (!remark || remark.trim().length < minLength) {
+        throw new ValidationError(
+          `设备"${deviceId}"的备注至少需要${minLength}个字符`,
+          'remark',
+          { deviceId, required: minLength, actual: remark?.length || 0 }
+        );
+      }
+    }
+  }
+
+  calculateLateness(submittedAt: number, templateDate: number, timeWindowEnd: string): { isLate: boolean; lateMinutes: number | undefined } {
+    const timeWindowEndTs = this.parseTimeToTimestamp(templateDate, timeWindowEnd);
+    const isLate = submittedAt > timeWindowEndTs;
+    const lateMinutes = isLate ? Math.floor((submittedAt - timeWindowEndTs) / 60000) : undefined;
+    return { isLate, lateMinutes };
+  }
+
+  createTemplate(input: CreateInspectionTemplateInput, operator: string): InspectionTemplate {
+    checkManageInspectionTemplatesPermission(operator);
+
+    this.validateTemplateInput(input);
+    this.validateNoDuplicateDevices(input.devices);
+
+    for (const deviceConfig of input.devices) {
+      this.validateTemplateDevice(deviceConfig, input.storeId);
+    }
+
+    this.validateNoTemplateTimeConflict(input.storeId, input.date, input.shift);
 
     const template = this.templateRepo.create({
       ...input,
@@ -144,34 +239,8 @@ export class InspectionService {
     checkManageInspectionTemplatesPermission(operator);
 
     const template = this.getTemplate(templateId);
-
-    if (template.status !== InspectionTemplateStatus.DRAFT) {
-      throw new ConflictError(
-        `巡检模板"${templateId}"当前状态为"${template.status}"，无法发布`,
-        { templateId, currentStatus: template.status }
-      );
-    }
-
-    const existingTemplates = this.templateRepo.findPublishedForStoreAtDate(
-      template.storeId,
-      template.date,
-      template.shift,
-      templateId
-    );
-    if (existingTemplates.length > 0) {
-      const conflictDesc = existingTemplates.map(t =>
-        `模板ID: ${t.id}, 名称: ${t.name}`
-      ).join('; ');
-      throw new ConflictError(
-        `门店"${template.storeId}"在${new Date(template.date).toLocaleDateString('zh-CN')}的${this.getShiftText(template.shift)}班次已存在发布的巡检模板，时间窗冲突。冲突模板: ${conflictDesc}`,
-        {
-          storeId: template.storeId,
-          date: template.date,
-          shift: template.shift,
-          conflictingTemplates: existingTemplates.map(t => ({ id: t.id, name: t.name }))
-        }
-      );
-    }
+    this.validateTemplateStatus(templateId, template.status, [InspectionTemplateStatus.DRAFT], '发布');
+    this.validateNoTemplateTimeConflict(template.storeId, template.date, template.shift, templateId);
 
     const now = Date.now();
     const updated = this.templateRepo.updateStatus(
@@ -203,17 +272,8 @@ export class InspectionService {
     checkManageInspectionTemplatesPermission(operator);
 
     const template = this.getTemplate(templateId);
-
-    if (template.status !== InspectionTemplateStatus.PUBLISHED) {
-      throw new ConflictError(
-        `巡检模板"${templateId}"当前状态为"${template.status}"，无法关闭`,
-        { templateId, currentStatus: template.status }
-      );
-    }
-
-    if (!reason || reason.trim().length === 0) {
-      throw new ValidationError('关闭原因不能为空', 'reason');
-    }
+    this.validateTemplateStatus(templateId, template.status, [InspectionTemplateStatus.PUBLISHED], '关闭');
+    this.validateReasonProvided(reason, '关闭原因');
 
     const recordCount = this.templateRepo.getInspectionCountForTemplate(templateId);
 
@@ -248,17 +308,8 @@ export class InspectionService {
     checkManageInspectionTemplatesPermission(operator);
 
     const template = this.getTemplate(templateId);
-
-    if (template.status === InspectionTemplateStatus.REVOKED) {
-      throw new ConflictError(
-        `巡检模板"${templateId}"已被撤销，无需重复操作`,
-        { templateId }
-      );
-    }
-
-    if (!reason || reason.trim().length === 0) {
-      throw new ValidationError('撤销原因不能为空', 'reason');
-    }
+    this.validateTemplateStatus(templateId, template.status, [InspectionTemplateStatus.DRAFT, InspectionTemplateStatus.PUBLISHED], '撤销');
+    this.validateReasonProvided(reason, '撤销原因');
 
     const recordCount = this.templateRepo.getInspectionCountForTemplate(templateId);
 
@@ -325,91 +376,37 @@ export class InspectionService {
   submitInspection(input: SubmitInspectionInput, operator: string): InspectionRecord {
     checkSubmitInspectionPermission(operator);
 
-    const effectiveOperator = operator;
-
     if (input.photos && !Array.isArray(input.photos)) {
       throw new ValidationError('照片必须是数组格式', 'photos');
     }
 
     const template = this.getTemplate(input.templateId);
-
-    if (template.status !== InspectionTemplateStatus.PUBLISHED) {
-      throw new ConflictError(
-        `巡检模板"${input.templateId}"当前状态为"${template.status}"，不允许提交巡检`,
-        { templateId: input.templateId, currentStatus: template.status }
-      );
-    }
+    this.validateTemplateStatus(input.templateId, template.status, [InspectionTemplateStatus.PUBLISHED], '提交巡检');
 
     const deviceConfig = this.templateRepo.getDeviceConfig(input.templateId, input.deviceId);
-    if (!deviceConfig) {
-      throw new ValidationError(
-        `设备"${input.deviceId}"不在模板"${input.templateId}"的巡检清单中`,
-        'deviceId',
-        { templateId: input.templateId, deviceId: input.deviceId }
-      );
-    }
-
-    if (deviceConfig.personInCharge !== effectiveOperator) {
-      throw new UnauthorizedError(
-        `用户"${effectiveOperator}"不是设备"${input.deviceId}"的指定负责人，不能提交该设备的巡检。指定负责人为"${deviceConfig.personInCharge}"`,
-        { userId: effectiveOperator, requiredPerson: deviceConfig.personInCharge, deviceId: input.deviceId }
-      );
-    }
+    this.validateDeviceInTemplate(input.templateId, input.deviceId, deviceConfig);
+    if (!deviceConfig) throw new ValidationError(`设备"${input.deviceId}"不在模板中`, 'deviceId');
+    this.validateIsPersonInCharge(input.deviceId, operator, deviceConfig.personInCharge);
 
     const existingRecord = this.recordRepo.findByTemplateAndDevice(input.templateId, input.deviceId);
-    if (existingRecord) {
-      throw new ConflictError(
-        `设备"${input.deviceId}"在模板"${input.templateId}"中已经提交过巡检，不允许重复提交`,
-        { templateId: input.templateId, deviceId: input.deviceId, existingRecordId: existingRecord.id }
-      );
-    }
+    this.validateNoDuplicateSubmission(input.templateId, input.deviceId, existingRecord);
 
     const device = this.deviceRepo.findById(input.deviceId);
     if (!device) {
       throw new ValidationError(`设备"${input.deviceId}"不存在`, 'deviceId');
     }
+    this.validateDeviceActive(input.deviceId, device.status);
 
-    if (device.status !== DeviceStatus.ACTIVE) {
-      throw new ValidationError(
-        `设备"${input.deviceId}"已停用，不能提交巡检`,
-        'deviceId',
-        { deviceId: input.deviceId, deviceStatus: device.status }
-      );
-    }
-
-    if (deviceConfig.photoRequirement.required) {
-      if (!input.photos || input.photos.length < deviceConfig.photoRequirement.minCount) {
-        throw new ValidationError(
-          `设备"${input.deviceId}"至少需要${deviceConfig.photoRequirement.minCount}张照片，实际提供${input.photos?.length || 0}张`,
-          'photos',
-          { deviceId: input.deviceId, required: deviceConfig.photoRequirement.minCount, actual: input.photos?.length || 0 }
-        );
-      }
-    }
-
-    if (deviceConfig.remarkRequirement.required) {
-      if (!input.remark || input.remark.trim().length < deviceConfig.remarkRequirement.minLength) {
-        throw new ValidationError(
-          `设备"${input.deviceId}"的备注至少需要${deviceConfig.remarkRequirement.minLength}个字符`,
-          'remark',
-          { deviceId: input.deviceId, required: deviceConfig.remarkRequirement.minLength, actual: input.remark?.length || 0 }
-        );
-      }
-    }
+    this.validatePhotoRequirement(input.deviceId, input.photos, deviceConfig.photoRequirement.minCount, deviceConfig.photoRequirement.required);
+    this.validateRemarkRequirement(input.deviceId, input.remark, deviceConfig.remarkRequirement.minLength, deviceConfig.remarkRequirement.required);
 
     const submittedAt = Date.now();
     const timeWindowStart = this.parseTimeToTimestamp(template.date, deviceConfig.timeWindow.startTime);
     const timeWindowEnd = this.parseTimeToTimestamp(template.date, deviceConfig.timeWindow.endTime);
     const expectedCheckTime = timeWindowStart;
 
-    const isLate = submittedAt > timeWindowEnd;
-    let lateMinutes: number | undefined;
-    let status = InspectionStatus.SUBMITTED;
-
-    if (isLate) {
-      lateMinutes = Math.floor((submittedAt - timeWindowEnd) / 60000);
-      status = InspectionStatus.LATE;
-    }
+    const { isLate, lateMinutes } = this.calculateLateness(submittedAt, template.date, deviceConfig.timeWindow.endTime);
+    let status = isLate ? InspectionStatus.LATE : InspectionStatus.SUBMITTED;
 
     const latestReading = this.readingRepo.findLatestByDevice(input.deviceId);
     const activeAlarms = this.alarmRepo.findOpenByDevice(input.deviceId);
@@ -419,7 +416,7 @@ export class InspectionService {
       templateId: input.templateId,
       deviceId: input.deviceId,
       storeId: template.storeId,
-      submittedBy: effectiveOperator,
+      submittedBy: operator,
       submittedAt,
       status,
       photos: input.photos || [],
@@ -442,7 +439,7 @@ export class InspectionService {
       operationType: OperationType.INSPECTION_SUBMIT,
       entityId: record.id,
       entityType: 'inspection_record',
-      operator: effectiveOperator,
+      operator,
       details: `提交巡检：模板${template.name}，设备${input.deviceId}，${isLate ? `迟到${lateMinutes}分钟` : '准时提交'}，${activeAlarm ? '当前有活动告警' : '无活动告警'}，${latestReading ? `最新温度${latestReading.temperature}℃` : '无温度读数'}`,
       storeId: template.storeId,
       deviceId: input.deviceId,

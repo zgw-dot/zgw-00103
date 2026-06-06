@@ -671,11 +671,16 @@ operator 提交巡检
 
 所有写操作需要在 Header 中携带 `X-User-Id` 指定操作用户。
 
+**巡检模块强制身份识别**：
+- 所有巡检接口（含查询、导出）必须携带 `X-User-Id` 请求头
+- 缺失时返回稳定 403 错误：`请求头缺失 X-User-Id，无法识别当前用户身份`
+- `body.operator` 字段会被**完全忽略**，操作人以 `X-User-Id` 为准，防止身份伪造
+
 测试用户：
 - `admin` - 全部权限
-- `manager_zhang` - 告警确认/关闭、导入、导出
-- `operator_li` - 导入、导出
-- `viewer_wang` - 仅导出
+- `manager_zhang` - 告警确认/关闭、导入、导出、巡检管理
+- `operator_li` - 导入、导出、提交巡检
+- `viewer_wang` - 仅导出、查看巡检
 
 ---
 
