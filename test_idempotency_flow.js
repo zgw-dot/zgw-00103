@@ -244,7 +244,8 @@ async function runTests() {
     testResult('幂等命中返回200', importHit.status === 200);
     testResult('返回结果包含success: true', importHit.data?.success === true);
     testResult('isIdempotencyHit为true', importHit.data?.data?.isIdempotencyHit === true);
-    testResult('返回原批次ID', importHit.data?.data?.batchId === firstBatchData.batchId);
+    testResult('返回新的命中批次ID', importHit.data?.data?.batchId !== firstBatchData.batchId);
+    testResult('返回originalBatchId指向原始批次', importHit.data?.data?.originalBatchId === firstBatchData.batchId);
     testResult('返回正确的submitCount (2)', importHit.data?.data?.submitCount === 2);
     testResult('返回originalBatchId', importHit.data?.data?.originalBatchId === firstBatchData.batchId);
     testResult('返回idempotencyKey', importHit.data?.data?.idempotencyKey === idemKey);
@@ -252,6 +253,8 @@ async function runTests() {
     testResult('返回失败数量与原批次一致', importHit.data?.data?.failedCount === firstBatchData.failedCount);
     testResult('generatedAlarms为0（不重复生成）', importHit.data?.data?.generatedAlarms === 0);
     testResult('recoveredAlarms为0（不重复生成）', importHit.data?.data?.recoveredAlarms === 0);
+    const firstHitBatchId = importHit.data?.data?.batchId;
+    console.log(`  首次命中批次ID: ${firstHitBatchId}`);
 
     console.log('\n\x1b[33m=== 阶段 6: 测试4 - 多次幂等命中（提交次数递增）===\x1b[0m');
     const importHit2 = await uploadCsv(TEST_CSV_A, 'operator_li', idemKey);
@@ -259,6 +262,7 @@ async function runTests() {
 
     const importHit3 = await uploadCsv(TEST_CSV_A, 'operator_li', idemKey);
     testResult('第四次幂等命中提交次数为4', importHit3.data?.data?.submitCount === 4);
+    const lastHitBatchId = importHit3.data?.data?.batchId;
 
     console.log('\n\x1b[33m=== 阶段 7: 测试5 - 幂等冲突（同key、不同内容）===\x1b[0m');
     const importConflict = await uploadCsv(TEST_CSV_B, 'operator_li', idemKey);
@@ -282,15 +286,22 @@ async function runTests() {
 
     console.log('\n\x1b[33m=== 阶段 10: 测试8 - 批次详情幂等信息 ===\x1b[0m');
     const batchDetail = await apiCall({
-      url: `/api/readings/batches/${firstBatchData.batchId}`,
+      url: `/api/readings/batches/${firstHitBatchId}`,
       headers: { 'X-User-Id': 'viewer_wang' },
     });
     testResult('viewer可查询批次详情', batchDetail.status === 200);
     const batch = batchDetail.data?.data?.batch;
     testResult('批次详情包含idempotencyKey', batch?.idempotencyKey === idemKey);
     testResult('批次详情包含fileContentHash', batch?.fileContentHash?.length === 64);
-    testResult('批次详情包含isIdempotencyHit', batch?.isIdempotencyHit === false);
-    testResult('批次详情包含submitCount', batch?.submitCount === 4);
+    testResult('批次详情包含isIdempotencyHit=true', batch?.isIdempotencyHit === true);
+    testResult('批次详情包含submitCount', batch?.submitCount === 2);
+
+    const originalDetail = await apiCall({
+      url: `/api/readings/batches/${firstBatchData.batchId}`,
+    });
+    const originalBatch = originalDetail.data?.data?.batch;
+    testResult('原始批次isIdempotencyHit=false（语义正确）', originalBatch?.isIdempotencyHit === false);
+    testResult('原始批次submitCount=1（语义正确）', originalBatch?.submitCount === 1);
 
     console.log('\n\x1b[33m=== 阶段 11: 测试9 - 批次列表幂等信息 ===\x1b[0m');
     const batchList = await apiCall({
@@ -299,14 +310,15 @@ async function runTests() {
     });
     testResult('viewer可查询批次列表', batchList.status === 200);
     const items = batchList.data?.data?.items || [];
-    const batchInList = items.find(b => b.id === firstBatchData.batchId);
-    testResult('批次在列表中', !!batchInList);
+    const batchInList = items.find(b => b.id === firstHitBatchId);
+    testResult('命中批次在列表中', !!batchInList);
     testResult('列表中包含idempotencyKey', batchInList?.idempotencyKey === idemKey);
-    testResult('列表中包含submitCount', batchInList?.submitCount === 4);
+    testResult('列表中包含submitCount=2', batchInList?.submitCount === 2);
+    testResult('列表中isIdempotencyHit=true', batchInList?.isIdempotencyHit === true);
 
     console.log('\n\x1b[33m=== 阶段 12: 测试10 - JSON导出幂等信息 ===\x1b[0m');
     const jsonExport = await apiCall({
-      url: `/api/readings/batches/${firstBatchData.batchId}/export?format=json`,
+      url: `/api/readings/batches/${firstHitBatchId}/export?format=json`,
       headers: { 'X-User-Id': 'viewer_wang' },
       responseType: 'text',
     });
@@ -314,9 +326,9 @@ async function runTests() {
     const jsonData = typeof jsonExport.data === 'string' ? JSON.parse(jsonExport.data) : jsonExport.data;
     testResult('JSON导出包含idempotencyKey', jsonData.batch?.idempotencyKey === idemKey);
     testResult('JSON导出包含fileContentHash', jsonData.batch?.fileContentHash?.length === 64);
-    testResult('JSON导出包含isIdempotencyHit', jsonData.batch?.isIdempotencyHit === false);
-    testResult('JSON导出包含submitCount', jsonData.batch?.submitCount === 4);
-    testResult('JSON导出包含originalBatchId', 'originalBatchId' in jsonData.batch);
+    testResult('JSON导出包含isIdempotencyHit=true', jsonData.batch?.isIdempotencyHit === true);
+    testResult('JSON导出包含submitCount=2', jsonData.batch?.submitCount === 2);
+    testResult('JSON导出包含originalBatchId', jsonData.batch?.originalBatchId === firstBatchData.batchId);
 
     console.log('\n\x1b[33m=== 阶段 13: 测试11 - CSV导出幂等信息 ===\x1b[0m');
     const csvExport = await apiCall({
@@ -331,16 +343,20 @@ async function runTests() {
 
     console.log('\n\x1b[33m=== 阶段 14: 测试12 - 审计日志完整 ===\x1b[0m');
     const auditDetail = await apiCall({
-      url: `/api/readings/batches/${firstBatchData.batchId}`,
+      url: `/api/readings/batches/${firstHitBatchId}`,
       headers: { 'X-User-Id': 'viewer_wang' },
     });
     const auditLogs = auditDetail.data?.data?.auditLogs || [];
-    const importLogs = auditLogs.filter(l => l.operationType === 'reading_import');
     const hitLogs = auditLogs.filter(l => l.operationType === 'idempotency_hit');
-    const conflictLogs = auditLogs.filter(l => l.operationType === 'idempotency_conflict');
-    testResult('有导入审计日志', importLogs.length >= 1);
-    testResult('有幂等命中审计日志', hitLogs.length >= 3);
+    testResult('命中批次有幂等命中审计日志', hitLogs.length >= 1);
     testResult('幂等命中日志包含提交次数', hitLogs[0]?.details?.includes('提交次数'));
+
+    const originalAuditDetail = await apiCall({
+      url: `/api/readings/batches/${firstBatchData.batchId}`,
+    });
+    const originalLogs = originalAuditDetail.data?.data?.auditLogs || [];
+    const importLogs = originalLogs.filter(l => l.operationType === 'reading_import');
+    testResult('原始批次有导入审计日志', importLogs.length >= 1);
 
     console.log('\n\x1b[33m=== 阶段 15: 测试13 - 验证不重复写入 ===\x1b[0m');
     const allReadings = await apiCall({
@@ -354,7 +370,7 @@ async function runTests() {
       url: '/api/readings/batches?pageSize=20',
     });
     const batchCount = allBatches.data?.data?.items?.length || 0;
-    testResult('批次数量正确（不重复创建批次）', batchCount === 3);
+    testResult('批次数量正确（每次幂等命中创建新批次）', batchCount === 6);
 
     console.log('\n\x1b[33m=== 阶段 16: 测试14 - 幂等冲突审计日志 ===\x1b[0m');
     const originalBatchDetail = await apiCall({
@@ -381,7 +397,7 @@ async function runTests() {
 
     console.log('\n\x1b[33m=== 阶段 20: 测试15 - 重启后批次信息一致 ===\x1b[0m');
     const afterDetail = await apiCall({
-      url: `/api/readings/batches/${firstBatchData.batchId}`,
+      url: `/api/readings/batches/${lastHitBatchId}`,
       headers: { 'X-User-Id': 'viewer_wang' },
     });
     testResult('重启后批次存在', afterDetail.status === 200);
@@ -389,7 +405,8 @@ async function runTests() {
     testResult('重启后idempotencyKey一致', afterBatch?.idempotencyKey === idemKey);
     testResult('重启后fileContentHash一致', afterBatch?.fileContentHash === batch?.fileContentHash);
     testResult('重启后submitCount一致', afterBatch?.submitCount === 4);
-    testResult('重启后isIdempotencyHit一致', afterBatch?.isIdempotencyHit === false);
+    testResult('重启后isIdempotencyHit一致', afterBatch?.isIdempotencyHit === true);
+    testResult('重启后originalBatchId一致', afterBatch?.originalBatchId === firstBatchData.batchId);
 
     console.log('\n\x1b[33m=== 阶段 21: 测试16 - 重启后幂等键仍然有效 ===\x1b[0m');
     const importHitAfter = await uploadCsv(TEST_CSV_A, 'operator_li', idemKey);
@@ -412,17 +429,19 @@ async function runTests() {
     testResult('重启后viewer仍可查询列表', viewerListAfter.status === 200);
 
     console.log('\n\x1b[33m=== 阶段 24: 测试19 - 重启后导出一致性 ===\x1b[0m');
+    const afterHitBatchId = importHitAfter.data?.data?.batchId;
     const jsonAfter = await apiCall({
-      url: `/api/readings/batches/${firstBatchData.batchId}/export?format=json`,
+      url: `/api/readings/batches/${afterHitBatchId}/export?format=json`,
       headers: { 'X-User-Id': 'viewer_wang' },
       responseType: 'text',
     });
     const jsonDataAfter = typeof jsonAfter.data === 'string' ? JSON.parse(jsonAfter.data) : jsonAfter.data;
     testResult('重启后JSON导出submitCount为5', jsonDataAfter.batch?.submitCount === 5);
+    testResult('重启后JSON导出isIdempotencyHit=true', jsonDataAfter.batch?.isIdempotencyHit === true);
     testResult('重启后JSON导出幂等信息完整', jsonDataAfter.batch?.idempotencyKey === idemKey);
 
     const csvAfter = await apiCall({
-      url: `/api/readings/batches/${firstBatchData.batchId}/export?format=csv`,
+      url: `/api/readings/batches/${afterHitBatchId}/export?format=csv`,
       headers: { 'X-User-Id': 'viewer_wang' },
       responseType: 'text',
     });

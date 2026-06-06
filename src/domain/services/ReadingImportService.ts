@@ -274,21 +274,33 @@ export class ReadingImportService {
     const updatedIdem = this.idempotencyKeyRepo.updateSubmitCount(idemRecord.id)!;
     const originalBatch = this.importBatchRepo.findById(idemRecord.originalBatchId)!;
 
-    this.importBatchRepo.update(originalBatch.id, {
+    const hitBatch = this.importBatchRepo.create({
+      fileName: originalBatch.fileName,
+      totalCount: originalBatch.totalCount,
+      successCount: originalBatch.successCount,
+      failedCount: originalBatch.failedCount,
+      errorDetails: originalBatch.errorDetails,
+      createdBy: operator,
+      status: originalBatch.status,
+      completedAt: originalBatch.completedAt,
+      idempotencyKey,
+      fileContentHash,
+      isIdempotencyHit: true,
+      originalBatchId: originalBatch.id,
       submitCount: updatedIdem.submitCount,
     });
 
     this.auditRepo.create({
       operationType: OperationType.IDEMPOTENCY_HIT,
-      entityId: originalBatch.id,
+      entityId: hitBatch.id,
       entityType: 'import_batch',
       operator,
       details: `幂等键命中，返回原始批次"${originalBatch.id}"，当前提交次数: ${updatedIdem.submitCount}`,
-      importBatchId: originalBatch.id,
+      importBatchId: hitBatch.id,
     });
 
     return {
-      batchId: originalBatch.id,
+      batchId: hitBatch.id,
       successCount: originalBatch.successCount,
       failedCount: originalBatch.failedCount,
       errors: originalBatch.errorDetails ? originalBatch.errorDetails.split('; ') : [],
@@ -502,6 +514,8 @@ export class ReadingImportService {
       );
     }
 
+    const dataBatchId = batch.originalBatchId || batchId;
+
     const rowStatusFilter = filters.rowStatus === 'all' ? undefined : filters.rowStatus;
     const queryFilters: QueryFilters = {
       rowStatus: rowStatusFilter,
@@ -509,8 +523,8 @@ export class ReadingImportService {
       pageSize: filters.pageSize || 100,
     };
 
-    const rowResults = this.batchRowResultRepo.findByBatchId(batchId, queryFilters);
-    const alarms = this.alarmRepo.findAll({ importBatchId: batchId, pageSize: 1000 }).items;
+    const rowResults = this.batchRowResultRepo.findByBatchId(dataBatchId, queryFilters);
+    const alarms = this.alarmRepo.findAll({ importBatchId: dataBatchId, pageSize: 1000 }).items;
     const auditLogs = this.auditRepo.findAll({ importBatchId: batchId, pageSize: 1000 }).items;
 
     return {
@@ -537,15 +551,17 @@ export class ReadingImportService {
       );
     }
 
+    const dataBatchId = batch.originalBatchId || batchId;
+
     const rowStatusFilter = filters.rowStatus === 'all' ? undefined : filters.rowStatus;
     const queryFilters: QueryFilters = {
       rowStatus: rowStatusFilter,
     };
 
-    const rowResults = this.batchRowResultRepo.findAllByBatchId(batchId).filter(r =>
+    const rowResults = this.batchRowResultRepo.findAllByBatchId(dataBatchId).filter(r =>
       rowStatusFilter ? r.status === rowStatusFilter : true
     );
-    const alarms = this.alarmRepo.findAll({ importBatchId: batchId, pageSize: 1000 }).items;
+    const alarms = this.alarmRepo.findAll({ importBatchId: dataBatchId, pageSize: 1000 }).items;
     const auditLogs = this.auditRepo.findAll({ importBatchId: batchId, pageSize: 1000 }).items;
 
     return {
