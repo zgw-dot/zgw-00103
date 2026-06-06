@@ -1,0 +1,101 @@
+import { prepare, runInTransaction, saveDatabase } from '../database';
+import { ImportBatch, QueryFilters, PaginatedResult } from '../../types';
+import crypto from 'crypto';
+
+export class ImportBatchRepository {
+
+  create(batch: Omit<ImportBatch, 'id' | 'createdAt'>): ImportBatch {
+    const id = `batch-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const stmt = prepare(`
+      INSERT INTO import_batches (id, file_name, total_count, success_count, failed_count, error_details, created_at, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      id,
+      batch.fileName,
+      batch.totalCount,
+      batch.successCount,
+      batch.failedCount,
+      batch.errorDetails,
+      now,
+      batch.createdBy
+    );
+    saveDatabase();
+    return { ...batch, id, createdAt: now };
+  }
+
+  findById(id: string): ImportBatch | null {
+    const row = prepare('SELECT * FROM import_batches WHERE id = ?').get(id) as any;
+    return row ? this.mapToImportBatch(row) : null;
+  }
+
+  findAll(filters: QueryFilters = {}): PaginatedResult<ImportBatch> {
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (filters.importBatchId) {
+      conditions.push('id = ?');
+      params.push(filters.importBatchId);
+    }
+    if (filters.startTime) {
+      conditions.push('created_at >= ?');
+      params.push(filters.startTime);
+    }
+    if (filters.endTime) {
+      conditions.push('created_at <= ?');
+      params.push(filters.endTime);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const countStmt = prepare(`SELECT COUNT(*) as count FROM import_batches ${whereClause}`);
+    const total = (countStmt.get(...params) as { count: number }).count;
+
+    const page = filters.page || 1;
+    const pageSize = filters.pageSize || 50;
+    const offset = (page - 1) * pageSize;
+
+    const rows = prepare(`
+      SELECT * FROM import_batches ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, pageSize, offset) as any[];
+
+    return {
+      items: rows.map(this.mapToImportBatch),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  update(id: string, data: Partial<Pick<ImportBatch, 'successCount' | 'failedCount' | 'errorDetails'>>): ImportBatch | null {
+    const fields: string[] = [];
+    const params: any[] = [];
+
+    if (data.successCount !== undefined) { fields.push('success_count = ?'); params.push(data.successCount); }
+    if (data.failedCount !== undefined) { fields.push('failed_count = ?'); params.push(data.failedCount); }
+    if (data.errorDetails !== undefined) { fields.push('error_details = ?'); params.push(data.errorDetails); }
+
+    params.push(id);
+
+    const stmt = prepare(`UPDATE import_batches SET ${fields.join(', ')} WHERE id = ?`);
+    const result = stmt.run(...params);
+    if (result.changes === 0) return null;
+    saveDatabase();
+    return this.findById(id);
+  }
+
+  private mapToImportBatch(row: any): ImportBatch {
+    return {
+      id: row.id,
+      fileName: row.file_name,
+      totalCount: row.total_count,
+      successCount: row.success_count,
+      failedCount: row.failed_count,
+      errorDetails: row.error_details,
+      createdAt: row.created_at,
+      createdBy: row.created_by,
+    };
+  }
+}
