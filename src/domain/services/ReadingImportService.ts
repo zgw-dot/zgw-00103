@@ -21,9 +21,13 @@ import {
   RowStatus,
   BatchRowResult,
   BatchDetail,
+  PaginatedBatchDetail,
+  BatchDetailFilters,
+  ImportBatch,
   Alarm,
   AuditLog,
   Threshold,
+  QueryFilters,
 } from '../../types';
 import {
   validateImportRow,
@@ -37,6 +41,99 @@ import {
   PreCheckContext,
 } from '../rules';
 import logger from '../../utils/logger';
+import { NotFoundError, BusinessError } from '../../utils/errors';
+
+const EXPORT_ROW_FIELDS: Array<keyof BatchRowResult> = [
+  'rowIndex',
+  'deviceId',
+  'temperature',
+  'readingTime',
+  'status',
+  'errorMessage',
+  'importBatchId',
+  'id',
+  'createdAt',
+];
+
+const EXPORT_ALARM_FIELDS: Array<keyof Alarm> = [
+  'id',
+  'deviceId',
+  'type',
+  'threshold',
+  'temperature',
+  'readingTime',
+  'status',
+  'readingId',
+  'acknowledgedAt',
+  'acknowledgedBy',
+  'recoveredAt',
+  'recoveredReadingId',
+  'recoveredTemperature',
+  'closedAt',
+  'closedBy',
+  'closeNote',
+  'createdAt',
+  'updatedAt',
+];
+
+const EXPORT_AUDIT_FIELDS: Array<keyof AuditLog> = [
+  'operationType',
+  'operator',
+  'details',
+  'createdAt',
+  'entityId',
+  'entityType',
+  'storeId',
+  'deviceId',
+  'importBatchId',
+  'alarmId',
+  'id',
+];
+
+const EXPORT_BATCH_FIELDS: Array<keyof ImportBatch> = [
+  'id',
+  'fileName',
+  'status',
+  'createdBy',
+  'createdAt',
+  'completedAt',
+  'totalCount',
+  'successCount',
+  'failedCount',
+  'errorDetails',
+];
+
+function formatValue(value: any): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (typeof value === 'number') {
+    return String(value);
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return String(value);
+}
+
+function formatExportRow<T>(obj: T, fields: Array<keyof T>): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const field of fields) {
+    const value = obj[field];
+    result[field as string] = value === undefined ? null : value;
+  }
+  return result;
+}
+
+function exportToCsvLine(values: any[]): string {
+  return values.map(v => {
+    const formatted = formatValue(v);
+    if (formatted.includes(',') || formatted.includes('"') || formatted.includes('\n')) {
+      return `"${formatted.replace(/"/g, '""')}"`;
+    }
+    return formatted;
+  }).join(',');
+}
 
 export class ReadingImportService {
 
@@ -306,15 +403,65 @@ export class ReadingImportService {
     return this.importFromCsv(fileStream, fileName, operator);
   }
 
-  getBatchDetail(batchId: string, operator: string): BatchDetail {
+  getBatchDetail(batchId: string, operator: string, filters: BatchDetailFilters = {}): PaginatedBatchDetail {
     checkViewBatchesPermission(operator);
 
     const batch = this.importBatchRepo.findById(batchId);
     if (!batch) {
-      throw new Error(`导入批次"${batchId}"不存在`);
+      throw new NotFoundError(`导入批次"${batchId}"不存在`, { batchId });
     }
 
-    const rowResults = this.batchRowResultRepo.findAllByBatchId(batchId);
+    if (batch.status === BatchStatus.ROLLED_BACK) {
+      throw new BusinessError(
+        `导入批次"${batchId}"已回滚，仅可查看批次元信息`,
+        'BATCH_ROLLED_BACK',
+        { batchId, status: batch.status }
+      );
+    }
+
+    const rowStatusFilter = filters.rowStatus === 'all' ? undefined : filters.rowStatus;
+    const queryFilters: QueryFilters = {
+      rowStatus: rowStatusFilter,
+      page: filters.page || 1,
+      pageSize: filters.pageSize || 100,
+    };
+
+    const rowResults = this.batchRowResultRepo.findByBatchId(batchId, queryFilters);
+    const alarms = this.alarmRepo.findAll({ importBatchId: batchId, pageSize: 1000 }).items;
+    const auditLogs = this.auditRepo.findAll({ importBatchId: batchId, pageSize: 1000 }).items;
+
+    return {
+      batch,
+      rowResults,
+      alarms,
+      auditLogs,
+    };
+  }
+
+  getBatchDetailAllRows(batchId: string, operator: string, filters: BatchDetailFilters = {}): BatchDetail {
+    checkViewBatchesPermission(operator);
+
+    const batch = this.importBatchRepo.findById(batchId);
+    if (!batch) {
+      throw new NotFoundError(`导入批次"${batchId}"不存在`, { batchId });
+    }
+
+    if (batch.status === BatchStatus.ROLLED_BACK) {
+      throw new BusinessError(
+        `导入批次"${batchId}"已回滚，仅可查看批次元信息`,
+        'BATCH_ROLLED_BACK',
+        { batchId, status: batch.status }
+      );
+    }
+
+    const rowStatusFilter = filters.rowStatus === 'all' ? undefined : filters.rowStatus;
+    const queryFilters: QueryFilters = {
+      rowStatus: rowStatusFilter,
+    };
+
+    const rowResults = this.batchRowResultRepo.findAllByBatchId(batchId).filter(r =>
+      rowStatusFilter ? r.status === rowStatusFilter : true
+    );
     const alarms = this.alarmRepo.findAll({ importBatchId: batchId, pageSize: 1000 }).items;
     const auditLogs = this.auditRepo.findAll({ importBatchId: batchId, pageSize: 1000 }).items;
 
@@ -329,77 +476,62 @@ export class ReadingImportService {
   exportBatchDetail(
     batchId: string,
     format: 'json' | 'csv',
-    operator: string
+    operator: string,
+    filters: BatchDetailFilters = {}
   ): { content: string; contentType: string; filename: string } {
     checkExportBatchesPermission(operator);
 
-    const detail = this.getBatchDetail(batchId, operator);
+    const detail = this.getBatchDetailAllRows(batchId, operator, filters);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+    const orderedBatch = formatExportRow(detail.batch, EXPORT_BATCH_FIELDS);
+    const orderedRows = detail.rowResults.map(r => formatExportRow(r, EXPORT_ROW_FIELDS));
+    const orderedAlarms = detail.alarms.map(a => formatExportRow(a, EXPORT_ALARM_FIELDS));
+    const orderedAuditLogs = detail.auditLogs.map(l => formatExportRow(l, EXPORT_AUDIT_FIELDS));
+
+    const exportData = {
+      batch: orderedBatch,
+      rowResults: orderedRows,
+      alarms: orderedAlarms,
+      auditLogs: orderedAuditLogs,
+      filters: {
+        rowStatus: filters.rowStatus || 'all',
+      },
+    };
 
     if (format === 'json') {
       return {
-        content: JSON.stringify(detail, null, 2),
+        content: JSON.stringify(exportData, null, 2),
         contentType: 'application/json; charset=utf-8',
         filename: `batch_detail_${batchId}_${timestamp}.json`,
       };
     }
 
-    const batchInfoRows = [
-      ['批次ID', detail.batch.id],
-      ['文件名', detail.batch.fileName],
-      ['状态', detail.batch.status],
-      ['操作者', detail.batch.createdBy],
-      ['创建时间', new Date(detail.batch.createdAt).toLocaleString('zh-CN')],
-      ['完成时间', detail.batch.completedAt ? new Date(detail.batch.completedAt).toLocaleString('zh-CN') : ''],
-      ['总条数', String(detail.batch.totalCount)],
-      ['成功条数', String(detail.batch.successCount)],
-      ['失败条数', String(detail.batch.failedCount)],
-    ];
-
-    const rowHeaders = ['行号', '设备ID', '温度', '读数时间', '状态', '错误信息'];
-    const rowData = detail.rowResults.map(r => [
-      String(r.rowIndex),
-      r.deviceId,
-      r.temperature !== undefined ? String(r.temperature) : '',
-      r.readingTime ? new Date(r.readingTime).toLocaleString('zh-CN') : '',
-      r.status,
-      r.errorMessage || '',
-    ]);
-
-    const alarmHeaders = ['告警ID', '设备ID', '类型', '阈值', '温度', '读数时间', '状态'];
-    const alarmData = detail.alarms.map(a => [
-      a.id,
-      a.deviceId,
-      a.type,
-      String(a.threshold),
-      String(a.temperature),
-      new Date(a.readingTime).toLocaleString('zh-CN'),
-      a.status,
-    ]);
-
-    const auditHeaders = ['操作类型', '操作者', '详情', '操作时间'];
-    const auditData = detail.auditLogs.map(l => [
-      l.operationType,
-      l.operator,
-      `"${(l.details || '').replace(/"/g, '""')}"`,
-      new Date(l.createdAt).toLocaleString('zh-CN'),
-    ]);
-
     const csvLines: string[] = [];
     csvLines.push('=== 批次信息 ===');
-    csvLines.push(...batchInfoRows.map(r => r.join(',')));
+    csvLines.push(EXPORT_BATCH_FIELDS.join(','));
+    csvLines.push(exportToCsvLine(EXPORT_BATCH_FIELDS.map(f => orderedBatch[f as string])));
+
     csvLines.push('');
     csvLines.push('=== 逐行结果 ===');
-    csvLines.push(rowHeaders.join(','));
-    csvLines.push(...rowData.map(r => r.join(',')));
+    csvLines.push(EXPORT_ROW_FIELDS.join(','));
+    for (const row of orderedRows) {
+      csvLines.push(exportToCsvLine(EXPORT_ROW_FIELDS.map(f => row[f as string])));
+    }
+
     csvLines.push('');
     csvLines.push('=== 关联告警 ===');
-    csvLines.push(alarmHeaders.join(','));
-    csvLines.push(...alarmData.map(r => r.join(',')));
+    csvLines.push(EXPORT_ALARM_FIELDS.join(','));
+    for (const alarm of orderedAlarms) {
+      csvLines.push(exportToCsvLine(EXPORT_ALARM_FIELDS.map(f => alarm[f as string])));
+    }
+
     csvLines.push('');
     csvLines.push('=== 审计日志 ===');
-    csvLines.push(auditHeaders.join(','));
-    csvLines.push(...auditData.map(r => r.join(',')));
+    csvLines.push(EXPORT_AUDIT_FIELDS.join(','));
+    for (const log of orderedAuditLogs) {
+      csvLines.push(exportToCsvLine(EXPORT_AUDIT_FIELDS.map(f => log[f as string])));
+    }
 
     return {
       content: '\uFEFF' + csvLines.join('\n'),

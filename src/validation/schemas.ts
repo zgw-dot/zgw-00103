@@ -98,6 +98,15 @@ export const dryRunCsvSchema = z.object({
 
 export const batchDetailSchema = z.object({
   format: z.enum(['csv', 'json']).optional().default('json'),
+  rowStatus: z.enum([
+    RowStatus.PENDING,
+    RowStatus.SUCCESS,
+    RowStatus.FAILED,
+    RowStatus.SKIPPED,
+    'all',
+  ]).optional().default('all'),
+  page: z.coerce.number().int().positive().optional().default(1),
+  pageSize: z.coerce.number().int().positive().max(500).optional().default(100),
 });
 
 export const batchQueryFiltersSchema = queryFiltersSchema.extend({
@@ -129,3 +138,4 @@ export type ImportCsvInput = z.infer<typeof importCsvSchema>;
 export type DryRunCsvInput = z.infer<typeof dryRunCsvSchema>;
 export type BatchDetailInput = z.infer<typeof batchDetailSchema>;
 export type BatchQueryFiltersInput = z.infer<typeof batchQueryFiltersSchema>;
+export type BatchDetailFiltersInput = z.infer<typeof batchDetailSchema>;

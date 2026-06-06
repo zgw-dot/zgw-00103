@@ -236,6 +236,19 @@ export interface BatchDetail {
   auditLogs: AuditLog[];
 }
 
+export interface PaginatedBatchDetail {
+  batch: ImportBatch;
+  rowResults: PaginatedResult<BatchRowResult>;
+  alarms: Alarm[];
+  auditLogs: AuditLog[];
+}
+
+export interface BatchDetailFilters {
+  rowStatus?: RowStatus | 'all';
+  page?: number;
+  pageSize?: number;
+}
+
 export interface CsvReadingRow {
   deviceId: string;
   temperature: string;

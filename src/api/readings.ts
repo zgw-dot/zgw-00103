@@ -4,6 +4,7 @@ import { ServiceContainer } from '../domain/services';
 import { validateQuery, validateBody, queryFiltersSchema, batchQueryFiltersSchema, batchDetailSchema } from '../validation';
 import { ApiResponse } from '../types';
 import { Readable } from 'stream';
+import { checkImportPermission, checkDryRunPermission } from '../domain/rules';
 
 const router = Router();
 
@@ -20,14 +21,17 @@ router.post(
     try {
       const services = ServiceContainer.getInstanceSync();
       const { readingImportService } = services;
+
+      const operator = (req.body.operator as string) || (req.headers['x-user-id'] as string) || 'admin';
+
+      checkDryRunPermission(operator);
+
       if (!req.file) {
         return res.status(400).json({
           success: false,
           message: '请上传CSV文件',
         });
       }
-
-      const operator = (req.body.operator as string) || (req.headers['x-user-id'] as string) || 'admin';
 
       const fileStream = Readable.from(req.file.buffer);
       const result = await readingImportService.dryRunImport(
@@ -54,14 +58,17 @@ router.post(
     try {
       const services = ServiceContainer.getInstanceSync();
       const { readingImportService } = services;
+
+      const operator = (req.body.operator as string) || (req.headers['x-user-id'] as string) || 'admin';
+
+      checkImportPermission(operator);
+
       if (!req.file) {
         return res.status(400).json({
           success: false,
           message: '请上传CSV文件',
         });
       }
-
-      const operator = (req.body.operator as string) || (req.headers['x-user-id'] as string) || 'admin';
 
       const fileStream = Readable.from(req.file.buffer);
       const result = await readingImportService.importFromCsv(
@@ -76,10 +83,7 @@ router.post(
         message: `导入成功，共${result.successCount}条`,
       });
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        message: error instanceof Error ? error.message : '导入失败',
-      });
+      next(error);
     }
   }
 );
@@ -107,20 +111,28 @@ router.get(
       const services = ServiceContainer.getInstanceSync();
       const { readingImportService } = services;
       const operator = (req.headers['x-user-id'] as string) || 'admin';
-      const format = req.query.format as 'json' | 'csv' || 'json';
+      const queryParams = req.query as any;
+      const format = queryParams.format || 'json';
+
+      const filters = {
+        rowStatus: queryParams.rowStatus,
+        page: queryParams.page,
+        pageSize: queryParams.pageSize,
+      };
 
       if (format === 'csv') {
         const { content, contentType, filename } = readingImportService.exportBatchDetail(
           req.params.id,
           'csv',
-          operator
+          operator,
+          filters
         );
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         return res.send(content);
       }
 
-      const detail = readingImportService.getBatchDetail(req.params.id, operator);
+      const detail = readingImportService.getBatchDetail(req.params.id, operator, filters);
       res.json({ success: true, data: detail });
     } catch (error) {
       next(error);
@@ -136,12 +148,20 @@ router.get(
       const services = ServiceContainer.getInstanceSync();
       const { readingImportService } = services;
       const operator = (req.headers['x-user-id'] as string) || 'admin';
-      const format = req.query.format as 'json' | 'csv' || 'json';
+      const queryParams = req.query as any;
+      const format = queryParams.format || 'json';
+
+      const filters = {
+        rowStatus: queryParams.rowStatus,
+        page: queryParams.page,
+        pageSize: queryParams.pageSize,
+      };
 
       const { content, contentType, filename } = readingImportService.exportBatchDetail(
         req.params.id,
         format,
-        operator
+        operator,
+        filters
       );
 
       res.setHeader('Content-Type', contentType);
