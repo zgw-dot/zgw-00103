@@ -125,76 +125,6 @@ router.get(
   }
 );
 
-router.get(
-  '/batches/:id',
-  validateQuery(batchDetailSchema),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const services = ServiceContainer.getInstanceSync();
-      const { readingImportService } = services;
-      const operator = (req.headers['x-user-id'] as string) || 'admin';
-      const queryParams = req.query as any;
-      const format = queryParams.format || 'json';
-
-      const filters = {
-        rowStatus: queryParams.rowStatus,
-        page: queryParams.page,
-        pageSize: queryParams.pageSize,
-      };
-
-      if (format === 'csv') {
-        const { content, contentType, filename } = readingImportService.exportBatchDetail(
-          req.params.id,
-          'csv',
-          operator,
-          filters
-        );
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        return res.send(content);
-      }
-
-      const detail = readingImportService.getBatchDetailWithRemarks(req.params.id, operator, filters);
-      res.json({ success: true, data: detail });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-router.get(
-  '/batches/:id/export',
-  validateQuery(batchDetailSchema),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const services = ServiceContainer.getInstanceSync();
-      const { readingImportService } = services;
-      const operator = (req.headers['x-user-id'] as string) || 'admin';
-      const queryParams = req.query as any;
-      const format = queryParams.format || 'json';
-
-      const filters = {
-        rowStatus: queryParams.rowStatus,
-        page: queryParams.page,
-        pageSize: queryParams.pageSize,
-      };
-
-      const { content, contentType, filename } = readingImportService.exportBatchDetail(
-        req.params.id,
-        format,
-        operator,
-        filters
-      );
-
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(content);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
 router.put(
   '/batches/:batchId/rows/:rowIndex/remark',
   validateParams(remarkRowParamSchema),
@@ -246,6 +176,76 @@ router.get(
       );
 
       res.json({ success: true, data: remark });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.get(
+  '/batches/:id/export',
+  validateQuery(batchDetailSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const services = ServiceContainer.getInstanceSync();
+      const { readingImportService } = services;
+      const operator = (req.headers['x-user-id'] as string) || 'admin';
+      const queryParams = req.query as any;
+      const format = queryParams.format || 'json';
+
+      const filters = {
+        rowStatus: queryParams.rowStatus,
+        page: queryParams.page,
+        pageSize: queryParams.pageSize,
+      };
+
+      const { content, contentType, filename } = readingImportService.exportBatchDetail(
+        req.params.id,
+        format,
+        operator,
+        filters
+      );
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(content);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.get(
+  '/batches/:id',
+  validateQuery(batchDetailSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const services = ServiceContainer.getInstanceSync();
+      const { readingImportService } = services;
+      const operator = (req.headers['x-user-id'] as string) || 'admin';
+      const queryParams = req.query as any;
+      const format = queryParams.format || 'json';
+
+      const filters = {
+        rowStatus: queryParams.rowStatus,
+        page: queryParams.page,
+        pageSize: queryParams.pageSize,
+      };
+
+      if (format === 'csv') {
+        const { content, contentType, filename } = readingImportService.exportBatchDetail(
+          req.params.id,
+          'csv',
+          operator,
+          filters
+        );
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        return res.send(content);
+      }
+
+      const detail = readingImportService.getBatchDetailWithRemarks(req.params.id, operator, filters);
+      res.json({ success: true, data: detail });
     } catch (error) {
       next(error);
     }

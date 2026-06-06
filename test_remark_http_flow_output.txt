@@ -1,0 +1,1084 @@
+
+============================================================
+📋 STEP 0: Setup Test Data
+============================================================
+"Creating devices and thresholds"
+
+------------------------------------------------------------
+>>> POST http://localhost:3005/api/devices
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "id": "DEVHTTP001",
+  "name": "HTTP Test Device",
+  "storeId": "STORE001",
+  "storeName": "Test Store"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "DEVHTTP001",
+    "name": "HTTP Test Device",
+    "storeId": "STORE001",
+    "storeName": "Test Store",
+    "status": "active",
+    "createdAt": 1780739663217,
+    "updatedAt": 1780739663217
+  },
+  "message": "设备创建成功"
+}
+
+
+------------------------------------------------------------
+>>> PUT http://localhost:3005/api/thresholds/device/DEVHTTP001
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "minTemp": -25,
+  "maxTemp": -15
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "deviceId": "DEVHTTP001",
+    "storeId": null,
+    "isDefault": false,
+    "minTemp": -25,
+    "maxTemp": -15,
+    "id": "th-47cc5574-2770-4a67-b0c6-3fd9cae4b9fc",
+    "createdAt": 1780739663238,
+    "updatedAt": 1780739663238
+  },
+  "message": "设备阈值设置成功"
+}
+
+
+============================================================
+📋 STEP 1: Import CSV with failed rows
+============================================================
+"Import test data to create failed rows"
+
+------------------------------------------------------------
+>>> POST http://localhost:3005/api/readings/import
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "operator_li",
+  "Content-Type": "multipart/form-data"
+}
+Body: "[CSV File]"
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+    "successCount": 3,
+    "failedCount": 2,
+    "errors": [
+      "第2行：温度\"INVALID_TEMP\"不是有效数字",
+      "第4行：温度\"NOT_A_NUMBER\"不是有效数字"
+    ],
+    "generatedAlarms": 0,
+    "recoveredAlarms": 0,
+    "status": "completed",
+    "isIdempotencyHit": false,
+    "submitCount": 1
+  },
+  "message": "导入成功，共3条"
+}
+
+
+============================================================
+📋 STEP 2: Get failed rows from batch detail
+============================================================
+"Query batch detail to find failed row numbers"
+
+------------------------------------------------------------
+>>> GET http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b?rowStatus=failed
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "fileName": "test_http_flow.csv",
+      "totalCount": 5,
+      "successCount": 3,
+      "failedCount": 2,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：温度\"NOT_A_NUMBER\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780739663268,
+      "createdBy": "operator_li",
+      "completedAt": 1780739663271,
+      "idempotencyKey": null,
+      "fileContentHash": "81fac9285151f48d45a7182a61b9afde6068a74aac9bb77f8f0b4d0e013cd449",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 2,
+        "remarkedRows": 0,
+        "unremarkedRows": 2
+      }
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-203ffc9e-f285-4ea2-acb5-8c02d9dac204",
+          "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+          "rowIndex": 2,
+          "deviceId": "DEVHTTP001",
+          "temperature": null,
+          "readingTime": 1780279260000,
+          "status": "failed",
+          "errorMessage": "第2行：温度\"INVALID_TEMP\"不是有效数字",
+          "createdAt": 1780739663271,
+          "remark": null
+        },
+        {
+          "id": "row-688e0ee0-911b-40f2-9df8-3a8ff546ae77",
+          "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+          "rowIndex": 4,
+          "deviceId": "DEVHTTP001",
+          "temperature": null,
+          "readingTime": 1780279380000,
+          "status": "failed",
+          "errorMessage": "第4行：温度\"NOT_A_NUMBER\"不是有效数字",
+          "createdAt": 1780739663271,
+          "remark": null
+        }
+      ],
+      "total": 2,
+      "page": 1,
+      "pageSize": 100
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-e769775a-028e-416e-9779-892ca14b59f3",
+        "operationType": "reading_import",
+        "entityId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_http_flow.csv\"，共5条，成功3条，失败2条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+        "alarmId": null,
+        "createdAt": 1780739663271
+      }
+    ]
+  }
+}
+
+
+============================================================
+📋 STEP 3: Test permission control - operator (should 403)
+============================================================
+"operator role does NOT have manage_row_remarks permission"
+
+------------------------------------------------------------
+>>> PUT http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b/rows/2/remark
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "operator_li",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": "operator trying to add remark"
+}
+
+
+<<< Status: 403
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "UNAUTHORIZED",
+  "message": "用户\"operator_li\"没有\"manage_row_remarks\"操作权限，请联系管理员授权"
+}
+
+
+============================================================
+📋 STEP 4: PUT add remark (manager - should succeed)
+============================================================
+"manager role HAS manage_row_remarks permission"
+
+------------------------------------------------------------
+>>> PUT http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b/rows/2/remark
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "manager_zhang",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": "已联系供应商更换温度传感器，预计3天内到货"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "remark": {
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "rowIndex": 2,
+      "remarkContent": "已联系供应商更换温度传感器，预计3天内到货",
+      "handledBy": "manager_zhang",
+      "handledAt": 1780739663307,
+      "id": "remark-49cb6d9d-6790-4aa4-8e7a-bdfaa4a4b7d6",
+      "createdAt": 1780739663307,
+      "updatedAt": 1780739663307
+    },
+    "isNew": true,
+    "isClear": false
+  },
+  "message": "备注已添加"
+}
+
+
+============================================================
+📋 STEP 5: GET remark (anyone can view)
+============================================================
+"All roles can view remarks - testing with viewer"
+
+------------------------------------------------------------
+>>> GET http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b/rows/2/remark
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "remark-49cb6d9d-6790-4aa4-8e7a-bdfaa4a4b7d6",
+    "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+    "rowIndex": 2,
+    "remarkContent": "已联系供应商更换温度传感器，预计3天内到货",
+    "handledBy": "manager_zhang",
+    "handledAt": 1780739663307,
+    "createdAt": 1780739663307,
+    "updatedAt": 1780739663307
+  }
+}
+
+
+============================================================
+📋 STEP 6: PUT update remark (admin - should succeed)
+============================================================
+"Update existing remark with new information"
+
+------------------------------------------------------------
+>>> PUT http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b/rows/2/remark
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": "传感器已更换完成，重新校准后数据正常"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "remark": {
+      "id": "remark-49cb6d9d-6790-4aa4-8e7a-bdfaa4a4b7d6",
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "rowIndex": 2,
+      "remarkContent": "传感器已更换完成，重新校准后数据正常",
+      "handledBy": "admin",
+      "handledAt": 1780739663323,
+      "createdAt": 1780739663307,
+      "updatedAt": 1780739663323
+    },
+    "isNew": false,
+    "isClear": false
+  },
+  "message": "备注已更新"
+}
+
+
+============================================================
+📋 STEP 7: GET batch detail with remarks
+============================================================
+"Batch detail should include remarkStats and row remarks"
+
+------------------------------------------------------------
+>>> GET http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b?rowStatus=failed
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "fileName": "test_http_flow.csv",
+      "totalCount": 5,
+      "successCount": 3,
+      "failedCount": 2,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：温度\"NOT_A_NUMBER\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780739663268,
+      "createdBy": "operator_li",
+      "completedAt": 1780739663271,
+      "idempotencyKey": null,
+      "fileContentHash": "81fac9285151f48d45a7182a61b9afde6068a74aac9bb77f8f0b4d0e013cd449",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 2,
+        "remarkedRows": 1,
+        "unremarkedRows": 1
+      }
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-203ffc9e-f285-4ea2-acb5-8c02d9dac204",
+          "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+          "rowIndex": 2,
+          "deviceId": "DEVHTTP001",
+          "temperature": null,
+          "readingTime": 1780279260000,
+          "status": "failed",
+          "errorMessage": "第2行：温度\"INVALID_TEMP\"不是有效数字",
+          "createdAt": 1780739663271,
+          "remark": {
+            "id": "remark-49cb6d9d-6790-4aa4-8e7a-bdfaa4a4b7d6",
+            "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+            "rowIndex": 2,
+            "remarkContent": "传感器已更换完成，重新校准后数据正常",
+            "handledBy": "admin",
+            "handledAt": 1780739663323,
+            "createdAt": 1780739663307,
+            "updatedAt": 1780739663323
+          }
+        },
+        {
+          "id": "row-688e0ee0-911b-40f2-9df8-3a8ff546ae77",
+          "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+          "rowIndex": 4,
+          "deviceId": "DEVHTTP001",
+          "temperature": null,
+          "readingTime": 1780279380000,
+          "status": "failed",
+          "errorMessage": "第4行：温度\"NOT_A_NUMBER\"不是有效数字",
+          "createdAt": 1780739663271,
+          "remark": null
+        }
+      ],
+      "total": 2,
+      "page": 1,
+      "pageSize": 100
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-c1205c57-fd15-4ff2-9926-6989c42461bc",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "更新批次\"batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b\"行号\"2\"的异常处置备注: 传感器已更换完成，重新校准后数据正常",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+        "alarmId": null,
+        "createdAt": 1780739663328
+      },
+      {
+        "id": "audit-afc59301-4949-4be4-a15a-e21f97710e9c",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b\"行号\"2\"的异常处置备注: 已联系供应商更换温度传感器，预计3天内到货",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+        "alarmId": null,
+        "createdAt": 1780739663310
+      },
+      {
+        "id": "audit-e769775a-028e-416e-9779-892ca14b59f3",
+        "operationType": "reading_import",
+        "entityId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_http_flow.csv\"，共5条，成功3条，失败2条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+        "alarmId": null,
+        "createdAt": 1780739663271
+      }
+    ]
+  }
+}
+
+
+============================================================
+📋 STEP 8: GET batch list with remark stats
+============================================================
+"Batch list should include remarkStats summary per batch"
+
+------------------------------------------------------------
+>>> GET http://localhost:3005/api/readings/batches
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+        "fileName": "test_http_flow.csv",
+        "totalCount": 5,
+        "successCount": 3,
+        "failedCount": 2,
+        "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：温度\"NOT_A_NUMBER\"不是有效数字",
+        "status": "completed",
+        "createdAt": 1780739663268,
+        "createdBy": "operator_li",
+        "completedAt": 1780739663271,
+        "idempotencyKey": null,
+        "fileContentHash": "81fac9285151f48d45a7182a61b9afde6068a74aac9bb77f8f0b4d0e013cd449",
+        "isIdempotencyHit": false,
+        "originalBatchId": null,
+        "submitCount": 1,
+        "remarkStats": {
+          "totalFailedRows": 2,
+          "remarkedRows": 1,
+          "unremarkedRows": 1
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 50
+  }
+}
+
+
+============================================================
+📋 STEP 9: Export batch as JSON (with remarks)
+============================================================
+"JSON export should include remark fields"
+
+------------------------------------------------------------
+>>> GET http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b/export?format=json
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "operator_li"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "batch": {
+    "id": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+    "fileName": "test_http_flow.csv",
+    "status": "completed",
+    "createdBy": "operator_li",
+    "createdAt": 1780739663268,
+    "completedAt": 1780739663271,
+    "totalCount": 5,
+    "successCount": 3,
+    "failedCount": 2,
+    "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：温度\"NOT_A_NUMBER\"不是有效数字",
+    "idempotencyKey": null,
+    "fileContentHash": "81fac9285151f48d45a7182a61b9afde6068a74aac9bb77f8f0b4d0e013cd449",
+    "isIdempotencyHit": false,
+    "originalBatchId": null,
+    "submitCount": 1,
+    "remarkStats": {
+      "totalFailedRows": 2,
+      "remarkedRows": 1,
+      "unremarkedRows": 1
+    }
+  },
+  "rowResults": [
+    {
+      "rowIndex": 1,
+      "deviceId": "DEVHTTP001",
+      "temperature": -20,
+      "readingTime": 1780279200000,
+      "status": "success",
+      "errorMessage": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "id": "row-07fa2fb7-2a7d-433c-a11f-bfd144a093f4",
+      "createdAt": 1780739663268,
+      "remark": null
+    },
+    {
+      "rowIndex": 2,
+      "deviceId": "DEVHTTP001",
+      "temperature": null,
+      "readingTime": 1780279260000,
+      "status": "failed",
+      "errorMessage": "第2行：温度\"INVALID_TEMP\"不是有效数字",
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "id": "row-203ffc9e-f285-4ea2-acb5-8c02d9dac204",
+      "createdAt": 1780739663271,
+      "remark": {
+        "remarkContent": "传感器已更换完成，重新校准后数据正常",
+        "handledBy": "admin",
+        "handledAt": 1780739663323,
+        "createdAt": 1780739663307,
+        "updatedAt": 1780739663323
+      }
+    },
+    {
+      "rowIndex": 3,
+      "deviceId": "DEVHTTP001",
+      "temperature": -18,
+      "readingTime": 1780279320000,
+      "status": "success",
+      "errorMessage": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "id": "row-16b277ba-fcb2-441c-a79f-e07b0789a14e",
+      "createdAt": 1780739663270,
+      "remark": null
+    },
+    {
+      "rowIndex": 4,
+      "deviceId": "DEVHTTP001",
+      "temperature": null,
+      "readingTime": 1780279380000,
+      "status": "failed",
+      "errorMessage": "第4行：温度\"NOT_A_NUMBER\"不是有效数字",
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "id": "row-688e0ee0-911b-40f2-9df8-3a8ff546ae77",
+      "createdAt": 1780739663271,
+      "remark": null
+    },
+    {
+      "rowIndex": 5,
+      "deviceId": "DEVHTTP001",
+      "temperature": -22,
+      "readingTime": 1780279440000,
+      "status": "success",
+      "errorMessage": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "id": "row-2f76950c-5ce9-4f5c-b2b9-1433bd79e429",
+      "createdAt": 1780739663270,
+      "remark": null
+    }
+  ],
+  "alarms": [],
+  "auditLogs": [
+    {
+      "operationType": "batch_row_remark_update",
+      "operator": "admin",
+      "details": "更新批次\"batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b\"行号\"2\"的异常处置备注: 传感器已更换完成，重新校准后数据正常",
+      "createdAt": 1780739663328,
+      "entityId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b-row-2",
+      "entityType": "batch_row_remark",
+      "storeId": null,
+      "deviceId": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "alarmId": null,
+      "id": "audit-c1205c57-fd15-4ff2-9926-6989c42461bc"
+    },
+    {
+      "operationType": "batch_row_remark_update",
+      "operator": "manager_zhang",
+      "details": "新增批次\"batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b\"行号\"2\"的异常处置备注: 已联系供应商更换温度传感器，预计3天内到货",
+      "createdAt": 1780739663310,
+      "entityId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b-row-2",
+      "entityType": "batch_row_remark",
+      "storeId": null,
+      "deviceId": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "alarmId": null,
+      "id": "audit-afc59301-4949-4be4-a15a-e21f97710e9c"
+    },
+    {
+      "operationType": "reading_import",
+      "operator": "operator_li",
+      "details": "导入CSV文件\"test_http_flow.csv\"，共5条，成功3条，失败2条，生成告警0条，恢复告警0条",
+      "createdAt": 1780739663271,
+      "entityId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "entityType": "import_batch",
+      "storeId": null,
+      "deviceId": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "alarmId": null,
+      "id": "audit-e769775a-028e-416e-9779-892ca14b59f3"
+    }
+  ],
+  "filters": {
+    "rowStatus": "all"
+  }
+}
+
+
+============================================================
+📋 STEP 10: Export batch as CSV (with remarks)
+============================================================
+"CSV export should include remark_ prefixed columns"
+
+------------------------------------------------------------
+>>> GET http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b/export?format=csv
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+"=== 批次信息 ===\nid,fileName,status,createdBy,createdAt,completedAt,totalCount,successCount,failedCount,errorDetails,idempotencyKey,fileContentHash,isIdempotencyHit,originalBatchId,submitCount,remarkStats\nbatch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b,test_http_flow.csv,completed,operator_li,1780739663268,1780739663271,5,3,2,\"第2行：温度\"\"INVALID_TEMP\"\"不是有效数字; 第4行：温度\"\"NOT_A_NUMBER\"\"不是有效数字\",,81fac9285151f48d45a7182a61b9afde6068a74aac9bb77f8f0b4d0e013cd449,false,,1,\"{\"\"totalFailedRows\"\":2,\"\"remarkedRows\"\":1,\"\"unremarkedRows\"\":1}\"\n\n=== 逐行结果 ===\nrowIndex,deviceId,temperature,readingTime,status,errorMessage,importBatchId,id,createdAt,remark_remarkContent,remark_handledBy,remark_handledAt,remark_createdAt,remark_updatedAt\n1,DEVHTTP001,-20,1780279200000,success,,batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b,row-07fa2fb7-2a7d-433c-a11f-bfd144a093f4,1780739663268,,,,,\n2,DEVHTTP001,,1780279260000,failed,\"第2行：温度\"\"INVALID_TEMP\"\"不是有效数字\",batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b,row-203ffc9e-f285-4ea2-acb5-8c02d9dac204,1780739663271,传感器已更换完成，重新校准后数据正常,admin,1780739663323,1780739663307,1780739663323\n3,DEVHTTP001,-18,1780279320000,success,,batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b,row-16b277ba-fcb2-441c-a79f-e07b0789a14e,1780739663270,,,,,\n4,DEVHTTP001,,1780279380000,failed,\"第4行：温度\"\"NOT_A_NUMBER\"\"不是有效数字\",batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b,row-688e0ee0-911b-40f2-9df8-3a8ff546ae77,1780739663271,,,,,\n5,DEVHTTP001,-22,1780279440000,success,,batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b,row-2f76950c-5ce9-4f5c-b2b9-1433bd79e429,1780739663270,,,,,\n\n=== 关联告警 ===\nid,deviceId,type,threshold,temperature,readingTime,status,readingId,acknowledgedAt,acknowledgedBy,recoveredAt,recoveredReadingId,recoveredTemperature,closedAt,closedBy,closeNote,createdAt,updatedAt\n\n=== 审计日志 ===\noperationType,operator,details,createdAt,entityId,entityType,storeId,deviceId,importBatchId,alarmId,id\nbatch_row_remark_update,admin,\"更新批次\"\"batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b\"\"行号\"\"2\"\"的异常处置备注: 传感器已更换完成，重新校准后数据正常\",1780739663328,batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b-row-2,batch_row_remark,,,batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b,,audit-c1205c57-fd15-4ff2-9926-6989c42461bc\nbatch_row_remark_update,manager_zhang,\"新增批次\"\"batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b\"\"行号\"\"2\"\"的异常处置备注: 已联系供应商更换温度传感器，预计3天内到货\",1780739663310,batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b-row-2,batch_row_remark,,,batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b,,audit-afc59301-4949-4be4-a15a-e21f97710e9c\nreading_import,operator_li,\"导入CSV文件\"\"test_http_flow.csv\"\"，共5条，成功3条，失败2条，生成告警0条，恢复告警0条\",1780739663271,batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b,import_batch,,,batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b,,audit-e769775a-028e-416e-9779-892ca14b59f3"
+
+
+============================================================
+📋 STEP 11: Clear remark with empty string
+============================================================
+"Empty remarkContent triggers clear operation"
+
+------------------------------------------------------------
+>>> PUT http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b/rows/2/remark
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": ""
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "remark": {
+      "id": "remark-49cb6d9d-6790-4aa4-8e7a-bdfaa4a4b7d6",
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "rowIndex": 2,
+      "remarkContent": "",
+      "handledBy": "admin",
+      "handledAt": 1780739663369,
+      "createdAt": 1780739663307,
+      "updatedAt": 1780739663369
+    },
+    "isNew": false,
+    "isClear": true
+  },
+  "message": "备注已清空"
+}
+
+
+============================================================
+📋 STEP 12: Verify remark is cleared (should return null)
+============================================================
+"GET after clear should return null, not 404"
+
+------------------------------------------------------------
+>>> GET http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b/rows/2/remark
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": null
+}
+
+
+============================================================
+📋 STEP 13: Add remark before restart for persistence test
+============================================================
+"Add a remark that should survive server restart"
+
+------------------------------------------------------------
+>>> PUT http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b/rows/2/remark
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": "持久化测试备注 - 重启后应该仍然存在"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "remark": {
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "rowIndex": 2,
+      "remarkContent": "持久化测试备注 - 重启后应该仍然存在",
+      "handledBy": "admin",
+      "handledAt": 1780739663384,
+      "id": "remark-f0083b23-1e40-4200-b084-b8c126e88277",
+      "createdAt": 1780739663384,
+      "updatedAt": 1780739663384
+    },
+    "isNew": true,
+    "isClear": false
+  },
+  "message": "备注已添加"
+}
+
+
+============================================================
+📋 STEP 15: Test invalid/boundary cases
+============================================================
+"Invalid batch, invalid row, success row"
+
+------------------------------------------------------------
+>>> GET http://localhost:3005/api/readings/batches/invalid-batch-id/rows/1/remark
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin"
+}
+
+
+<<< Status: 404
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "NOT_FOUND",
+  "message": "导入批次\"invalid-batch-id\"不存在"
+}
+
+
+------------------------------------------------------------
+>>> GET http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b/rows/99999/remark
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin"
+}
+
+
+<<< Status: 404
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "NOT_FOUND",
+  "message": "批次\"batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b\"中不存在行号\"99999\""
+}
+
+
+------------------------------------------------------------
+>>> PUT http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b/rows/1/remark
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": "trying to add remark to success row"
+}
+
+
+<<< Status: 400
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "ROW_NOT_FAILED",
+  "message": "仅能对失败行添加备注，行号\"1\"的状态是\"success\""
+}
+
+
+============================================================
+📋 STEP 14: Verify remark persists after server restart
+============================================================
+"Query remark after server restart with same DB_PATH"
+
+------------------------------------------------------------
+>>> GET http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b/rows/2/remark
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "remark-f0083b23-1e40-4200-b084-b8c126e88277",
+    "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+    "rowIndex": 2,
+    "remarkContent": "持久化测试备注 - 重启后应该仍然存在",
+    "handledBy": "admin",
+    "handledAt": 1780739663384,
+    "createdAt": 1780739663384,
+    "updatedAt": 1780739663384
+  }
+}
+
+
+------------------------------------------------------------
+>>> GET http://localhost:3005/api/readings/batches
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+        "fileName": "test_http_flow.csv",
+        "totalCount": 5,
+        "successCount": 3,
+        "failedCount": 2,
+        "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：温度\"NOT_A_NUMBER\"不是有效数字",
+        "status": "completed",
+        "createdAt": 1780739663268,
+        "createdBy": "operator_li",
+        "completedAt": 1780739663271,
+        "idempotencyKey": null,
+        "fileContentHash": "81fac9285151f48d45a7182a61b9afde6068a74aac9bb77f8f0b4d0e013cd449",
+        "isIdempotencyHit": false,
+        "originalBatchId": null,
+        "submitCount": 1,
+        "remarkStats": {
+          "totalFailedRows": 2,
+          "remarkedRows": 1,
+          "unremarkedRows": 1
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 50
+  }
+}
+
+
+------------------------------------------------------------
+>>> GET http://localhost:3005/api/readings/batches/batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b/export?format=json
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "batch": {
+    "id": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+    "fileName": "test_http_flow.csv",
+    "status": "completed",
+    "createdBy": "operator_li",
+    "createdAt": 1780739663268,
+    "completedAt": 1780739663271,
+    "totalCount": 5,
+    "successCount": 3,
+    "failedCount": 2,
+    "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：温度\"NOT_A_NUMBER\"不是有效数字",
+    "idempotencyKey": null,
+    "fileContentHash": "81fac9285151f48d45a7182a61b9afde6068a74aac9bb77f8f0b4d0e013cd449",
+    "isIdempotencyHit": false,
+    "originalBatchId": null,
+    "submitCount": 1,
+    "remarkStats": {
+      "totalFailedRows": 2,
+      "remarkedRows": 1,
+      "unremarkedRows": 1
+    }
+  },
+  "rowResults": [
+    {
+      "rowIndex": 1,
+      "deviceId": "DEVHTTP001",
+      "temperature": -20,
+      "readingTime": 1780279200000,
+      "status": "success",
+      "errorMessage": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "id": "row-07fa2fb7-2a7d-433c-a11f-bfd144a093f4",
+      "createdAt": 1780739663268,
+      "remark": null
+    },
+    {
+      "rowIndex": 2,
+      "deviceId": "DEVHTTP001",
+      "temperature": null,
+      "readingTime": 1780279260000,
+      "status": "failed",
+      "errorMessage": "第2行：温度\"INVALID_TEMP\"不是有效数字",
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "id": "row-203ffc9e-f285-4ea2-acb5-8c02d9dac204",
+      "createdAt": 1780739663271,
+      "remark": {
+        "remarkContent": "持久化测试备注 - 重启后应该仍然存在",
+        "handledBy": "admin",
+        "handledAt": 1780739663384,
+        "createdAt": 1780739663384,
+        "updatedAt": 1780739663384
+      }
+    },
+    {
+      "rowIndex": 3,
+      "deviceId": "DEVHTTP001",
+      "temperature": -18,
+      "readingTime": 1780279320000,
+      "status": "success",
+      "errorMessage": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "id": "row-16b277ba-fcb2-441c-a79f-e07b0789a14e",
+      "createdAt": 1780739663270,
+      "remark": null
+    },
+    {
+      "rowIndex": 4,
+      "deviceId": "DEVHTTP001",
+      "temperature": null,
+      "readingTime": 1780279380000,
+      "status": "failed",
+      "errorMessage": "第4行：温度\"NOT_A_NUMBER\"不是有效数字",
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "id": "row-688e0ee0-911b-40f2-9df8-3a8ff546ae77",
+      "createdAt": 1780739663271,
+      "remark": null
+    },
+    {
+      "rowIndex": 5,
+      "deviceId": "DEVHTTP001",
+      "temperature": -22,
+      "readingTime": 1780279440000,
+      "status": "success",
+      "errorMessage": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "id": "row-2f76950c-5ce9-4f5c-b2b9-1433bd79e429",
+      "createdAt": 1780739663270,
+      "remark": null
+    }
+  ],
+  "alarms": [],
+  "auditLogs": [
+    {
+      "operationType": "batch_row_remark_update",
+      "operator": "admin",
+      "details": "新增批次\"batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b\"行号\"2\"的异常处置备注: 持久化测试备注 - 重启后应该仍然存在",
+      "createdAt": 1780739663386,
+      "entityId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b-row-2",
+      "entityType": "batch_row_remark",
+      "storeId": null,
+      "deviceId": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "alarmId": null,
+      "id": "audit-35acac32-04db-4e2e-9b38-614ab050f726"
+    },
+    {
+      "operationType": "batch_row_remark_clear",
+      "operator": "admin",
+      "details": "清空批次\"batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b\"行号\"2\"的异常处置备注，原备注: 传感器已更换完成，重新校准后数据正常",
+      "createdAt": 1780739663372,
+      "entityId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b-row-2",
+      "entityType": "batch_row_remark",
+      "storeId": null,
+      "deviceId": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "alarmId": null,
+      "id": "audit-7d7414b7-c43a-4261-8c22-8b979a668065"
+    },
+    {
+      "operationType": "batch_row_remark_update",
+      "operator": "admin",
+      "details": "更新批次\"batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b\"行号\"2\"的异常处置备注: 传感器已更换完成，重新校准后数据正常",
+      "createdAt": 1780739663328,
+      "entityId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b-row-2",
+      "entityType": "batch_row_remark",
+      "storeId": null,
+      "deviceId": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "alarmId": null,
+      "id": "audit-c1205c57-fd15-4ff2-9926-6989c42461bc"
+    },
+    {
+      "operationType": "batch_row_remark_update",
+      "operator": "manager_zhang",
+      "details": "新增批次\"batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b\"行号\"2\"的异常处置备注: 已联系供应商更换温度传感器，预计3天内到货",
+      "createdAt": 1780739663310,
+      "entityId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b-row-2",
+      "entityType": "batch_row_remark",
+      "storeId": null,
+      "deviceId": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "alarmId": null,
+      "id": "audit-afc59301-4949-4be4-a15a-e21f97710e9c"
+    },
+    {
+      "operationType": "reading_import",
+      "operator": "operator_li",
+      "details": "导入CSV文件\"test_http_flow.csv\"，共5条，成功3条，失败2条，生成告警0条，恢复告警0条",
+      "createdAt": 1780739663271,
+      "entityId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "entityType": "import_batch",
+      "storeId": null,
+      "deviceId": null,
+      "importBatchId": "batch-56cd588e-9ae8-4e8a-9fbb-9d20ff697a7b",
+      "alarmId": null,
+      "id": "audit-e769775a-028e-416e-9779-892ca14b59f3"
+    }
+  ],
+  "filters": {
+    "rowStatus": "all"
+  }
+}

@@ -815,6 +815,16 @@ export class ReadingImportService {
 
     const dataBatchId = batch.originalBatchId || batchId;
 
+    const rowResult = this.batchRowResultRepo.findAllByBatchId(dataBatchId)
+      .find(r => r.rowIndex === rowIndex);
+
+    if (!rowResult) {
+      throw new NotFoundError(
+        `批次"${batchId}"中不存在行号"${rowIndex}"`,
+        { batchId, rowIndex }
+      );
+    }
+
     return this.batchRowRemarkRepo.findByBatchIdAndRowIndex(dataBatchId, rowIndex);
   }
 
