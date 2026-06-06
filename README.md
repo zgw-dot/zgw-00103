@@ -197,7 +197,7 @@ open → acknowledged → recovered → closed
 - ❌ 重复确认已确认告警 → 409 状态不允许
 - ❌ 关闭已关闭告警 → 409 状态不允许
 
-### 3.2 批次复盘详情
+### 3.2 批次复盘详情与失败行处置进度
 
 **按导入批次查看完整复盘信息**：
 
@@ -208,6 +208,8 @@ open → acknowledged → recovered → closed
 - 📝 关联的审计事件
 - 📑 **异常行处置备注统计**（已备注/未备注失败行数）
 - 💬 **每行失败行的处置备注**（处理人、处理时间、原因）
+- 📈 **详细处置统计**（处理人分布、完成进度百分比）
+- 🔍 **失败行筛选能力**（按备注状态、处理人、处理时间范围筛选）
 
 **支持的批次状态：
 - `pending`: 待处理
@@ -222,6 +224,68 @@ open → acknowledged → recovered → closed
 - 🔄 同一行被重复修改时保留最新备注和一条审计日志
 - 🗑️ 空备注视为清空
 - 💾 备注包含：`remarkContent`（原因）、`handledBy`（处理人）、`handledAt`（处理时间）
+
+**失败行处置进度筛选**：
+
+**批次列表筛选参数**：
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `remarkStatus` | `remarked` \| `unremarked` | 按备注状态筛选（已备注/未备注） |
+| `handledBy` | `string` | 按处理人筛选（必须是已知用户：`admin`, `manager_zhang`, `operator_li`, `viewer_wang`） |
+| `remarkStartTime` | `number` | 处理时间范围开始（毫秒时间戳） |
+| `remarkEndTime` | `number` | 处理时间范围结束（毫秒时间戳） |
+
+**批次详情筛选参数**：
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `remarkStatus` | `remarked` \| `unremarked` | 按备注状态筛选行 |
+| `handledBy` | `string` | 按处理人筛选行 |
+| `remarkStartTime` | `number` | 处理时间范围开始 |
+| `remarkEndTime` | `number` | 处理时间范围结束 |
+
+**筛选约束**：
+- ❌ 筛选 `unremarked`（未备注）时不能同时指定 `handledBy` 或时间范围
+- ❌ `remarkStartTime` 不能大于 `remarkEndTime`
+- ❌ `handledBy` 必须是系统已知用户
+- ❌ 时间戳必须在有效范围内（2000-01-01 ~ 2100-01-01）
+
+**错误响应示例**：
+```json
+{
+  "success": false,
+  "code": "VALIDATION_ERROR",
+  "message": "remarkStatus: 筛选未备注行时不能同时指定处理人或处理时间范围",
+  "errors": ["remarkStatus: 筛选未备注行时不能同时指定处理人或处理时间范围"]
+}
+```
+
+**处置统计说明**：
+
+批次级 `dispositionStats`：
+```json
+{
+  "totalFailedRows": 4,
+  "remarkedRows": 2,
+  "unremarkedRows": 2,
+  "byHandler": [
+    { "handledBy": "manager_zhang", "count": 1 },
+    { "handledBy": "admin", "count": 1 }
+  ],
+  "remarkProgress": 50
+}
+```
+
+列表级 `summary`：
+```json
+{
+  "totalBatches": 10,
+  "batchesWithUnremarkedRows": 3,
+  "totalFailedRows": 25,
+  "totalRemarkedRows": 18,
+  "totalUnremarkedRows": 7,
+  "overallProgress": 72
+}
+```
 
 ### 3.3 JSON/CSV 导出
 
@@ -499,18 +563,115 @@ operator: operator_li
 
 ```http
 GET /api/readings/batches?batchStatus=completed&page=1&pageSize=50
+X-User-Id: viewer_wang
 ```
 
 **筛选参数**：
 - `batchStatus`: 批次状态 (pending/processing/completed/failed/rolled_back)
 - `startTime`: 开始时间戳
 - `endTime`: 结束时间戳
+- `remarkStatus`: 按备注状态筛选 (`remarked`/`unremarked`)
+- `handledBy`: 按处理人筛选（已知用户：`admin`, `manager_zhang`, `operator_li`, `viewer_wang`）
+- `remarkStartTime`: 处理时间范围开始（毫秒时间戳）
+- `remarkEndTime`: 处理时间范围结束（毫秒时间戳）
+
+**快速定位未处理异常（值班人员常用）**：
+```bash
+# 查找所有包含未备注失败行的批次
+curl "http://localhost:3000/api/readings/batches?remarkStatus=unremarked" \
+  -H "X-User-Id: viewer_wang"
+```
+
+**按处理人筛选**：
+```bash
+# 查找 manager_zhang 处理过的批次
+curl "http://localhost:3000/api/readings/batches?handledBy=manager_zhang" \
+  -H "X-User-Id: viewer_wang"
+```
+
+**按处理时间范围筛选**：
+```bash
+# 查找 2024-01-15 当天处理的备注
+curl "http://localhost:3000/api/readings/batches?remarkStartTime=1705276800000&remarkEndTime=1705363199000" \
+  -H "X-User-Id: viewer_wang"
+```
+
+**响应示例**（包含处置统计汇总）：
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "batch-xxxx",
+        "fileName": "temperature_readings.csv",
+        "totalCount": 8,
+        "successCount": 4,
+        "failedCount": 4,
+        "status": "completed",
+        "createdBy": "operator_li",
+        "createdAt": 1705305600000,
+        "remarkStats": {
+          "totalFailedRows": 4,
+          "remarkedRows": 2,
+          "unremarkedRows": 2
+        },
+        "dispositionStats": {
+          "totalFailedRows": 4,
+          "remarkedRows": 2,
+          "unremarkedRows": 2,
+          "byHandler": [
+            { "handledBy": "manager_zhang", "count": 2 }
+          ],
+          "remarkProgress": 50
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 50,
+    "summary": {
+      "totalBatches": 1,
+      "batchesWithUnremarkedRows": 1,
+      "totalFailedRows": 4,
+      "totalRemarkedRows": 2,
+      "totalUnremarkedRows": 2,
+      "overallProgress": 50
+    },
+    "appliedFilters": {
+      "remarkStatus": "unremarked"
+    }
+  }
+}
+```
 
 #### 查询批次详情（复盘）
 
 ```http
-GET /api/readings/batches/{batchId}
+GET /api/readings/batches/{batchId}?rowStatus=failed&remarkStatus=unremarked&page=1&pageSize=10
 X-User-Id: viewer_wang
+```
+
+**筛选参数**：
+- `rowStatus`: 行状态 (`pending`/`success`/`failed`/`skipped`/`all`)，默认 `all`
+- `remarkStatus`: 按备注状态筛选行 (`remarked`/`unremarked`)
+- `handledBy`: 按处理人筛选行
+- `remarkStartTime`: 处理时间范围开始
+- `remarkEndTime`: 处理时间范围结束
+- `page`: 页码，默认 1
+- `pageSize`: 每页条数，默认 100，最大 500
+
+**筛选未处理的失败行（值班人员快速定位）**：
+```bash
+# 只显示未备注的失败行
+curl "http://localhost:3000/api/readings/batches/{batchId}?rowStatus=failed&remarkStatus=unremarked" \
+  -H "X-User-Id: viewer_wang"
+```
+
+**筛选 manager_zhang 处理过的行**：
+```bash
+curl "http://localhost:3000/api/readings/batches/{batchId}?handledBy=manager_zhang" \
+  -H "X-User-Id: viewer_wang"
 ```
 
 **响应示例**（包含备注统计和每行备注）：
@@ -534,26 +695,45 @@ X-User-Id: viewer_wang
         "unremarkedRows": 2
       }
     },
-    "rowResults": [
-      {"rowIndex": 1, "deviceId": "FREEZER-001", "temperature": -22.5, "status": "success", "errorMessage": null, "remark": null},
-      {
-        "rowIndex": 2,
-        "deviceId": "UNKNOWN-999",
-        "status": "failed",
-        "errorMessage": "设备不存在",
-        "remark": {
-          "remarkContent": "设备不存在，已通知门店补充设备台账",
-          "handledBy": "manager_zhang",
-          "handledAt": 1705305700000
+    "dispositionStats": {
+      "totalFailedRows": 4,
+      "remarkedRows": 2,
+      "unremarkedRows": 2,
+      "byHandler": [
+        { "handledBy": "manager_zhang", "count": 1 },
+        { "handledBy": "admin", "count": 1 }
+      ],
+      "remarkProgress": 50
+    },
+    "rowResults": {
+      "items": [
+        {"rowIndex": 1, "deviceId": "FREEZER-001", "temperature": -22.5, "status": "success", "errorMessage": null, "remark": null},
+        {
+          "rowIndex": 2,
+          "deviceId": "UNKNOWN-999",
+          "status": "failed",
+          "errorMessage": "设备不存在",
+          "remark": {
+            "remarkContent": "设备不存在，已通知门店补充设备台账",
+            "handledBy": "manager_zhang",
+            "handledAt": 1705305700000
+          }
         }
-      }
-    ],
+      ],
+      "total": 8,
+      "page": 1,
+      "pageSize": 100
+    },
     "alarms": [
       {"id": "al-xxxx", "deviceId": "FREEZER-001", "type": "high_temp", "status": "open"}
     ],
     "auditLogs": [
       {"operationType": "reading_import", "operator": "operator_li", "details": "导入完成"}
-    ]
+    ],
+    "appliedFilters": {
+      "rowStatus": "failed",
+      "remarkStatus": "unremarked"
+    }
   }
 }
 ```
@@ -741,17 +921,28 @@ X-User-Id: viewer_wang
 
 **导出为 JSON**：
 ```http
-GET /api/readings/batches/{batchId}/export?format=json
+GET /api/readings/batches/{batchId}/export?format=json&rowStatus=failed&remarkStatus=unremarked
 X-User-Id: viewer_wang
 ```
 
 **导出为 CSV**：
 ```http
-GET /api/readings/batches/{batchId}/export?format=csv
+GET /api/readings/batches/{batchId}/export?format=csv&handledBy=manager_zhang
 X-User-Id: viewer_wang
 ```
 
-> 导出内容与查询结果完全一致。
+**导出筛选参数**（与详情查询一致）：
+- `rowStatus`: 按行状态筛选导出
+- `remarkStatus`: 按备注状态筛选导出
+- `handledBy`: 按处理人筛选导出
+- `remarkStartTime`: 按处理时间范围开始筛选
+- `remarkEndTime`: 按处理时间范围结束筛选
+
+> 导出内容与筛选后的查询结果完全一致。JSON 导出包含 `filters` 字段记录应用的筛选条件，CSV 导出包含「应用筛选条件」章节显示筛选参数。
+
+**权限说明**：
+- 👁️ `viewer` / `operator` 角色：可以查看和导出（包含所有筛选参数）
+- 🔧 `manager` / `admin` 角色：可以查看、导出，以及写备注
 
 #### 查询温度读数
 ```http

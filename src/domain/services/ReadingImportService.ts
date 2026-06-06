@@ -1,7 +1,7 @@
 import { Readable } from 'stream';
 import csvParser from 'csv-parser';
 import crypto from 'crypto';
-import { runInTransaction } from '../../storage/database';
+import { runInTransaction, prepare } from '../../storage/database';
 import {
   DeviceRepository,
   ReadingRepository,
@@ -13,6 +13,7 @@ import {
   IdempotencyKeyRepository,
   BatchRowRemarkRepository,
 } from '../../storage/repositories';
+import { ValidationError } from '../../utils/errors';
 import { AlarmService } from './AlarmService';
 import {
   CsvReadingRow,
@@ -38,6 +39,9 @@ import {
   BatchDetailWithRemarks,
   BatchDetailAllRowsWithRemarks,
   UpsertRemarkResult,
+  DispositionStats,
+  RemarkFilters,
+  PaginatedBatchListWithDisposition,
 } from '../../types';
 import {
   validateImportRow,
@@ -605,6 +609,15 @@ export class ReadingImportService {
     }));
   }
 
+  private extractRemarkFilters(filters: BatchDetailFilters): RemarkFilters {
+    return {
+      remarkStatus: filters.remarkStatus,
+      handledBy: filters.handledBy,
+      remarkStartTime: filters.remarkStartTime,
+      remarkEndTime: filters.remarkEndTime,
+    };
+  }
+
   getBatchDetailWithRemarks(
     batchId: string,
     operator: string,
@@ -634,22 +647,38 @@ export class ReadingImportService {
       pageSize: filters.pageSize || 100,
     };
 
-    const rowResults = this.batchRowResultRepo.findByBatchId(dataBatchId, queryFilters);
-    const allRemarks = this.batchRowRemarkRepo.findByBatchId(dataBatchId);
+    const remarkFilters = this.extractRemarkFilters(filters);
+    const hasRemarkFilters = remarkFilters.remarkStatus || remarkFilters.handledBy || remarkFilters.remarkStartTime || remarkFilters.remarkEndTime;
+
+    let rowResults: PaginatedResult<BatchRowResult>;
+    let filteredRemarks: BatchRowRemark[];
+
+    if (hasRemarkFilters) {
+      rowResults = this.batchRowResultRepo.findByBatchIdWithRemarkFilters(dataBatchId, queryFilters, remarkFilters);
+      filteredRemarks = this.batchRowRemarkRepo.findByBatchIdWithFilters(dataBatchId, remarkFilters);
+    } else {
+      rowResults = this.batchRowResultRepo.findByBatchId(dataBatchId, queryFilters);
+      filteredRemarks = this.batchRowRemarkRepo.findByBatchId(dataBatchId);
+    }
+
     const rowResultsWithRemark: PaginatedResult<BatchRowResultWithRemark> = {
       ...rowResults,
-      items: this.joinRemarksWithRows(rowResults.items, allRemarks),
+      items: this.joinRemarksWithRows(rowResults.items, filteredRemarks),
     };
 
     const alarms = this.alarmRepo.findAll({ importBatchId: dataBatchId, pageSize: 1000 }).items;
     const auditLogs = this.auditRepo.findAll({ importBatchId: batchId, pageSize: 1000 }).items;
     const remarkStats = this.batchRowRemarkRepo.getRemarkStatsForBatch(dataBatchId);
+    const dispositionStats = this.batchRowRemarkRepo.getDispositionStatsForBatch(dataBatchId, remarkFilters);
+    const appliedFilters = this.extractRemarkFilters(filters);
 
     return {
       batch: { ...batch, remarkStats },
+      dispositionStats,
       rowResults: rowResultsWithRemark,
       alarms,
       auditLogs,
+      appliedFilters,
     };
   }
 
@@ -676,24 +705,84 @@ export class ReadingImportService {
     const dataBatchId = batch.originalBatchId || batchId;
 
     const rowStatusFilter = filters.rowStatus === 'all' ? undefined : filters.rowStatus;
+    const queryFilters: QueryFilters = {
+      rowStatus: rowStatusFilter,
+    };
 
-    let rowResults = this.batchRowResultRepo.findAllByBatchId(dataBatchId);
-    if (rowStatusFilter) {
-      rowResults = rowResults.filter(r => r.status === rowStatusFilter);
+    const remarkFilters = this.extractRemarkFilters(filters);
+    const hasRemarkFilters = remarkFilters.remarkStatus || remarkFilters.handledBy || remarkFilters.remarkStartTime || remarkFilters.remarkEndTime;
+
+    let rowResults: BatchRowResult[];
+    let filteredRemarks: BatchRowRemark[];
+
+    if (hasRemarkFilters) {
+      rowResults = this.batchRowResultRepo.findAllByBatchIdWithRemarkFilters(dataBatchId, queryFilters, remarkFilters);
+      filteredRemarks = this.batchRowRemarkRepo.findByBatchIdWithFilters(dataBatchId, remarkFilters);
+    } else {
+      rowResults = this.batchRowResultRepo.findAllByBatchId(dataBatchId);
+      if (rowStatusFilter) {
+        rowResults = rowResults.filter(r => r.status === rowStatusFilter);
+      }
+      filteredRemarks = this.batchRowRemarkRepo.findByBatchId(dataBatchId);
     }
 
-    const allRemarks = this.batchRowRemarkRepo.findByBatchId(dataBatchId);
-    const rowResultsWithRemark = this.joinRemarksWithRows(rowResults, allRemarks);
+    const rowResultsWithRemark = this.joinRemarksWithRows(rowResults, filteredRemarks);
 
     const alarms = this.alarmRepo.findAll({ importBatchId: dataBatchId, pageSize: 1000 }).items;
     const auditLogs = this.auditRepo.findAll({ importBatchId: batchId, pageSize: 1000 }).items;
     const remarkStats = this.batchRowRemarkRepo.getRemarkStatsForBatch(dataBatchId);
+    const dispositionStats = this.batchRowRemarkRepo.getDispositionStatsForBatch(dataBatchId, remarkFilters);
+    const appliedFilters = this.extractRemarkFilters(filters);
 
     return {
       batch: { ...batch, remarkStats },
+      dispositionStats,
       rowResults: rowResultsWithRemark,
       alarms,
       auditLogs,
+      appliedFilters,
+    };
+  }
+
+  getBatchListWithDisposition(
+    operator: string,
+    filters: QueryFilters & { batchStatus?: BatchStatus } = {}
+  ): PaginatedBatchListWithDisposition {
+    checkViewBatchesPermission(operator);
+
+    const remarkFilters = this.extractRemarkFilters(filters);
+    const hasRemarkFilters = remarkFilters.remarkStatus || remarkFilters.handledBy || remarkFilters.remarkStartTime || remarkFilters.remarkEndTime;
+
+    let result: PaginatedResult<ImportBatch> & { matchingBatchIds: string[] };
+
+    if (hasRemarkFilters) {
+      result = this.importBatchRepo.findAllWithRemarkFilters(filters, remarkFilters);
+    } else {
+      const basicResult = this.importBatchRepo.findAll(filters);
+      const allIds = prepare(`
+        SELECT id FROM import_batches
+        ORDER BY created_at DESC
+      `).all() as Array<{ id: string }>;
+      result = { ...basicResult, matchingBatchIds: allIds.map(r => r.id) };
+    }
+
+    const itemsWithStats = result.items.map(batch => {
+      const dataBatchId = (batch as any).originalBatchId || batch.id;
+      const remarkStats = this.batchRowRemarkRepo.getRemarkStatsForBatch(dataBatchId);
+      const dispositionStats = this.batchRowRemarkRepo.getDispositionStatsForBatch(dataBatchId, remarkFilters);
+      return { ...batch, remarkStats, dispositionStats };
+    });
+
+    const summary = this.batchRowRemarkRepo.getBatchListDispositionStats(result.matchingBatchIds);
+    const appliedFilters = this.extractRemarkFilters(filters);
+
+    return {
+      items: itemsWithStats,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      summary,
+      appliedFilters,
     };
   }
 
@@ -841,8 +930,10 @@ export class ReadingImportService {
 
     const batchWithStats = { ...detail.batch };
     const remarkStats = (batchWithStats as any).remarkStats;
+    const dispositionStats = (detail as any).dispositionStats;
     const orderedBatch = formatExportRow(batchWithStats, EXPORT_BATCH_FIELDS);
     (orderedBatch as any).remarkStats = remarkStats;
+    (orderedBatch as any).dispositionStats = dispositionStats;
 
     const orderedRows = detail.rowResults.map(r => {
       const rowExport: any = formatExportRow(r, EXPORT_ROW_FIELDS.filter(f => f !== 'remark'));
@@ -856,13 +947,19 @@ export class ReadingImportService {
     const orderedAlarms = detail.alarms.map(a => formatExportRow(a, EXPORT_ALARM_FIELDS));
     const orderedAuditLogs = detail.auditLogs.map(l => formatExportRow(l, EXPORT_AUDIT_FIELDS));
 
+    const appliedFilters = (detail as any).appliedFilters || {};
     const exportData = {
       batch: orderedBatch,
+      dispositionStats,
       rowResults: orderedRows,
       alarms: orderedAlarms,
       auditLogs: orderedAuditLogs,
       filters: {
         rowStatus: filters.rowStatus || 'all',
+        remarkStatus: appliedFilters.remarkStatus,
+        handledBy: appliedFilters.handledBy,
+        remarkStartTime: appliedFilters.remarkStartTime,
+        remarkEndTime: appliedFilters.remarkEndTime,
       },
     };
 
@@ -876,11 +973,21 @@ export class ReadingImportService {
 
     const csvLines: string[] = [];
     csvLines.push('=== 批次信息 ===');
-    const batchFields = [...EXPORT_BATCH_FIELDS, 'remarkStats'];
+    const batchFields = [...EXPORT_BATCH_FIELDS, 'remarkStats', 'dispositionStats'];
     csvLines.push(batchFields.join(','));
     const batchValues = EXPORT_BATCH_FIELDS.map(f => orderedBatch[f as string]);
     batchValues.push(JSON.stringify(remarkStats));
+    batchValues.push(JSON.stringify(dispositionStats));
     csvLines.push(exportToCsvLine(batchValues));
+
+    csvLines.push('');
+    csvLines.push('=== 应用筛选条件 ===');
+    csvLines.push('筛选条件,值');
+    csvLines.push(`rowStatus,${filters.rowStatus || 'all'}`);
+    csvLines.push(`remarkStatus,${appliedFilters.remarkStatus || ''}`);
+    csvLines.push(`handledBy,${appliedFilters.handledBy || ''}`);
+    csvLines.push(`remarkStartTime,${appliedFilters.remarkStartTime || ''}`);
+    csvLines.push(`remarkEndTime,${appliedFilters.remarkEndTime || ''}`);
 
     csvLines.push('');
     csvLines.push('=== 逐行结果 ===');

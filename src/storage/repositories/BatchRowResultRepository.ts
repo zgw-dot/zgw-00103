@@ -1,5 +1,5 @@
 import { prepare, runInTransaction, saveDatabase } from '../database';
-import { BatchRowResult, RowStatus, QueryFilters, PaginatedResult } from '../../types';
+import { BatchRowResult, RowStatus, QueryFilters, PaginatedResult, RemarkFilters } from '../../types';
 import crypto from 'crypto';
 
 export class BatchRowResultRepository {
@@ -102,6 +102,132 @@ export class BatchRowResultRepository {
       WHERE import_batch_id = ?
       ORDER BY row_index ASC
     `).all(batchId) as any[];
+    return rows.map(this.mapToBatchRowResult);
+  }
+
+  findByBatchIdWithRemarkFilters(
+    batchId: string,
+    filters: QueryFilters = {},
+    remarkFilters: RemarkFilters = {}
+  ): PaginatedResult<BatchRowResult> {
+    const conditions: string[] = ['br.import_batch_id = ?'];
+    const params: any[] = [batchId];
+
+    if (filters.rowStatus) {
+      conditions.push('br.status = ?');
+      params.push(filters.rowStatus);
+    }
+    if (filters.deviceId) {
+      conditions.push('br.device_id = ?');
+      params.push(filters.deviceId);
+    }
+
+    if (remarkFilters.remarkStatus === 'remarked') {
+      conditions.push('EXISTS (SELECT 1 FROM batch_row_remarks brr WHERE brr.import_batch_id = br.import_batch_id AND brr.row_index = br.row_index)');
+    } else if (remarkFilters.remarkStatus === 'unremarked') {
+      conditions.push('br.status = ?');
+      params.push('failed');
+      conditions.push('NOT EXISTS (SELECT 1 FROM batch_row_remarks brr WHERE brr.import_batch_id = br.import_batch_id AND brr.row_index = br.row_index)');
+    }
+
+    if (remarkFilters.handledBy || remarkFilters.remarkStartTime || remarkFilters.remarkEndTime) {
+      conditions.push('EXISTS (SELECT 1 FROM batch_row_remarks brr WHERE brr.import_batch_id = br.import_batch_id AND brr.row_index = br.row_index');
+      const remarkConditions: string[] = [];
+      if (remarkFilters.handledBy) {
+        remarkConditions.push('brr.handled_by = ?');
+        params.push(remarkFilters.handledBy);
+      }
+      if (remarkFilters.remarkStartTime) {
+        remarkConditions.push('brr.handled_at >= ?');
+        params.push(remarkFilters.remarkStartTime);
+      }
+      if (remarkFilters.remarkEndTime) {
+        remarkConditions.push('brr.handled_at <= ?');
+        params.push(remarkFilters.remarkEndTime);
+      }
+      if (remarkConditions.length > 0) {
+        conditions[conditions.length - 1] += ' AND ' + remarkConditions.join(' AND ') + ')';
+      } else {
+        conditions[conditions.length - 1] += ')';
+      }
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const countStmt = prepare(`SELECT COUNT(*) as count FROM batch_row_results br ${whereClause}`);
+    const total = (countStmt.get(...params) as { count: number }).count;
+
+    const page = filters.page || 1;
+    const pageSize = filters.pageSize || 100;
+    const offset = (page - 1) * pageSize;
+
+    const rows = prepare(`
+      SELECT br.* FROM batch_row_results br ${whereClause}
+      ORDER BY br.row_index ASC
+      LIMIT ? OFFSET ?
+    `).all(...params, pageSize, offset) as any[];
+
+    return {
+      items: rows.map(this.mapToBatchRowResult),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  findAllByBatchIdWithRemarkFilters(
+    batchId: string,
+    filters: QueryFilters = {},
+    remarkFilters: RemarkFilters = {}
+  ): BatchRowResult[] {
+    const conditions: string[] = ['br.import_batch_id = ?'];
+    const params: any[] = [batchId];
+
+    if (filters.rowStatus) {
+      conditions.push('br.status = ?');
+      params.push(filters.rowStatus);
+    }
+    if (filters.deviceId) {
+      conditions.push('br.device_id = ?');
+      params.push(filters.deviceId);
+    }
+
+    if (remarkFilters.remarkStatus === 'remarked') {
+      conditions.push('EXISTS (SELECT 1 FROM batch_row_remarks brr WHERE brr.import_batch_id = br.import_batch_id AND brr.row_index = br.row_index)');
+    } else if (remarkFilters.remarkStatus === 'unremarked') {
+      conditions.push('br.status = ?');
+      params.push('failed');
+      conditions.push('NOT EXISTS (SELECT 1 FROM batch_row_remarks brr WHERE brr.import_batch_id = br.import_batch_id AND brr.row_index = br.row_index)');
+    }
+
+    if (remarkFilters.handledBy || remarkFilters.remarkStartTime || remarkFilters.remarkEndTime) {
+      conditions.push('EXISTS (SELECT 1 FROM batch_row_remarks brr WHERE brr.import_batch_id = br.import_batch_id AND brr.row_index = br.row_index');
+      const remarkConditions: string[] = [];
+      if (remarkFilters.handledBy) {
+        remarkConditions.push('brr.handled_by = ?');
+        params.push(remarkFilters.handledBy);
+      }
+      if (remarkFilters.remarkStartTime) {
+        remarkConditions.push('brr.handled_at >= ?');
+        params.push(remarkFilters.remarkStartTime);
+      }
+      if (remarkFilters.remarkEndTime) {
+        remarkConditions.push('brr.handled_at <= ?');
+        params.push(remarkFilters.remarkEndTime);
+      }
+      if (remarkConditions.length > 0) {
+        conditions[conditions.length - 1] += ' AND ' + remarkConditions.join(' AND ') + ')';
+      } else {
+        conditions[conditions.length - 1] += ')';
+      }
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+    const rows = prepare(`
+      SELECT br.* FROM batch_row_results br ${whereClause}
+      ORDER BY br.row_index ASC
+    `).all(...params) as any[];
+
     return rows.map(this.mapToBatchRowResult);
   }
 

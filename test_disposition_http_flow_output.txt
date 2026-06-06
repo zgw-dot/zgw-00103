@@ -1,0 +1,3017 @@
+
+======================================================================
+📋 STEP 0: Setup Test Data
+======================================================================
+Creating devices and thresholds
+
+----------------------------------------------------------------------
+>>> POST http://localhost:3007/api/devices
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "id": "DEVDISPO001",
+  "name": "Disposition Test Device",
+  "storeId": "STORE-DISPO",
+  "storeName": "Disposition Test Store",
+  "status": "active"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "DEVDISPO001",
+    "name": "Disposition Test Device",
+    "storeId": "STORE-DISPO",
+    "storeName": "Disposition Test Store",
+    "status": "active",
+    "createdAt": 1780745578046,
+    "updatedAt": 1780745578046
+  },
+  "message": "设备创建成功"
+}
+
+
+----------------------------------------------------------------------
+>>> PUT http://localhost:3007/api/thresholds/device/DEVDISPO001
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "minTemp": -25,
+  "maxTemp": -15
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "deviceId": "DEVDISPO001",
+    "storeId": null,
+    "isDefault": false,
+    "minTemp": -25,
+    "maxTemp": -15,
+    "id": "th-b2345ce8-f6d7-4c34-9ca3-97d7cd8dd8c0",
+    "createdAt": 1780745578069,
+    "updatedAt": 1780745578069
+  },
+  "message": "设备阈值设置成功"
+}
+
+
+======================================================================
+📋 STEP 1: Import CSV with failed rows
+======================================================================
+Import test data to create failed rows
+
+----------------------------------------------------------------------
+>>> POST http://localhost:3007/api/readings/import
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "operator_li",
+  "Content-Type": "multipart/form-data"
+}
+Body: [CSV File]
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+    "successCount": 5,
+    "failedCount": 5,
+    "errors": [
+      "第2行：温度\"INVALID_TEMP\"不是有效数字",
+      "第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加",
+      "第5行：温度\"NOT_A_NUMBER\"不是有效数字",
+      "第7行：设备ID不能为空",
+      "第9行：温度\"BAD_VALUE\"不是有效数字"
+    ],
+    "generatedAlarms": 0,
+    "recoveredAlarms": 0,
+    "status": "completed",
+    "isIdempotencyHit": false,
+    "submitCount": 1
+  },
+  "message": "导入成功，共5条"
+}
+
+
+======================================================================
+📋 STEP 2: Get failed rows from batch detail
+======================================================================
+Query batch detail to find failed row numbers
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "fileName": "test_disposition_http.csv",
+      "totalCount": 10,
+      "successCount": 5,
+      "failedCount": 5,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780745578105,
+      "createdBy": "operator_li",
+      "completedAt": 1780745578114,
+      "idempotencyKey": null,
+      "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 5,
+        "remarkedRows": 0,
+        "unremarkedRows": 5
+      }
+    },
+    "dispositionStats": {
+      "totalFailedRows": 5,
+      "remarkedRows": 0,
+      "unremarkedRows": 5,
+      "byHandler": [],
+      "remarkProgress": 0
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-726f2356-4b08-4476-b3f3-dc6a30621022",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 2,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279260000,
+          "status": "failed",
+          "errorMessage": "第2行：温度\"INVALID_TEMP\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": null
+        },
+        {
+          "id": "row-9115ea91-1c3b-4d10-a957-25eb1580e54f",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 4,
+          "deviceId": "UNKNOWN-DISPO-001",
+          "temperature": -19,
+          "readingTime": 1780279380000,
+          "status": "failed",
+          "errorMessage": "第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加",
+          "createdAt": 1780745578113,
+          "remark": null
+        },
+        {
+          "id": "row-8d7e8d18-cdd8-46cd-b487-a0052e5db127",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 5,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279440000,
+          "status": "failed",
+          "errorMessage": "第5行：温度\"NOT_A_NUMBER\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": null
+        },
+        {
+          "id": "row-8a8c00f5-56d3-47c7-a9b7-50440026b3d8",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 7,
+          "deviceId": "",
+          "temperature": -19.5,
+          "readingTime": 1780279560000,
+          "status": "failed",
+          "errorMessage": "第7行：设备ID不能为空",
+          "createdAt": 1780745578113,
+          "remark": null
+        },
+        {
+          "id": "row-e96b81cc-ce05-4ba2-bbf4-f33a33381b26",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 9,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279680000,
+          "status": "failed",
+          "errorMessage": "第9行：温度\"BAD_VALUE\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": null
+        }
+      ],
+      "total": 5,
+      "page": 1,
+      "pageSize": 100
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3",
+        "operationType": "reading_import",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_disposition_http.csv\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578114
+      }
+    ],
+    "appliedFilters": {}
+  }
+}
+
+
+======================================================================
+📋 STEP 3: GET batch list with disposition stats (no filters)
+======================================================================
+Batch list should include dispositionStats and summary
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches?pageSize=10
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "fileName": "test_disposition_http.csv",
+        "totalCount": 10,
+        "successCount": 5,
+        "failedCount": 5,
+        "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+        "status": "completed",
+        "createdAt": 1780745578105,
+        "createdBy": "operator_li",
+        "completedAt": 1780745578114,
+        "idempotencyKey": null,
+        "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+        "isIdempotencyHit": false,
+        "originalBatchId": null,
+        "submitCount": 1,
+        "remarkStats": {
+          "totalFailedRows": 5,
+          "remarkedRows": 0,
+          "unremarkedRows": 5
+        },
+        "dispositionStats": {
+          "totalFailedRows": 5,
+          "remarkedRows": 0,
+          "unremarkedRows": 5,
+          "byHandler": [],
+          "remarkProgress": 0
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 10,
+    "summary": {
+      "totalBatches": 1,
+      "batchesWithUnremarkedRows": 1,
+      "totalFailedRows": 5,
+      "totalRemarkedRows": 0,
+      "totalUnremarkedRows": 5,
+      "overallProgress": 0
+    },
+    "appliedFilters": {}
+  }
+}
+
+
+======================================================================
+📋 STEP 4: Add remarks to failed rows (different handlers)
+======================================================================
+Add remarks with manager_zhang and admin
+
+----------------------------------------------------------------------
+>>> PUT http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261/rows/2/remark
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "manager_zhang",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": "温度格式错误，已反馈数据采集团队排查"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "remark": {
+      "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "rowIndex": 2,
+      "remarkContent": "温度格式错误，已反馈数据采集团队排查",
+      "handledBy": "manager_zhang",
+      "handledAt": 1780745578159,
+      "id": "remark-86a5039a-6e74-46a1-aaba-c2f145e752c4",
+      "createdAt": 1780745578159,
+      "updatedAt": 1780745578159
+    },
+    "isNew": true,
+    "isClear": false
+  },
+  "message": "备注已添加"
+}
+
+
+----------------------------------------------------------------------
+>>> PUT http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261/rows/4/remark
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": "设备不存在，已通知门店补充设备台账"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "remark": {
+      "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "rowIndex": 4,
+      "remarkContent": "设备不存在，已通知门店补充设备台账",
+      "handledBy": "admin",
+      "handledAt": 1780745578418,
+      "id": "remark-069c2e8d-a772-458c-83fe-eb23229eff03",
+      "createdAt": 1780745578418,
+      "updatedAt": 1780745578418
+    },
+    "isNew": true,
+    "isClear": false
+  },
+  "message": "备注已添加"
+}
+
+
+----------------------------------------------------------------------
+>>> PUT http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261/rows/5/remark
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "manager_zhang",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": "deviceId为空，已联系供应商确认数据格式"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "remark": {
+      "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "rowIndex": 5,
+      "remarkContent": "deviceId为空，已联系供应商确认数据格式",
+      "handledBy": "manager_zhang",
+      "handledAt": 1780745578692,
+      "id": "remark-f537635f-a518-4f6e-97bf-5c2c58a159b9",
+      "createdAt": 1780745578692,
+      "updatedAt": 1780745578692
+    },
+    "isNew": true,
+    "isClear": false
+  },
+  "message": "备注已添加"
+}
+
+
+======================================================================
+📋 STEP 5: GET batch list filtered by remarkStatus=remarked
+======================================================================
+Filter batches to show only those with remarked rows
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches?pageSize=10&remarkStatus=remarked
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "fileName": "test_disposition_http.csv",
+        "totalCount": 10,
+        "successCount": 5,
+        "failedCount": 5,
+        "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+        "status": "completed",
+        "createdAt": 1780745578105,
+        "createdBy": "operator_li",
+        "completedAt": 1780745578114,
+        "idempotencyKey": null,
+        "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+        "isIdempotencyHit": false,
+        "originalBatchId": null,
+        "submitCount": 1,
+        "remarkStats": {
+          "totalFailedRows": 5,
+          "remarkedRows": 3,
+          "unremarkedRows": 2
+        },
+        "dispositionStats": {
+          "totalFailedRows": 5,
+          "remarkedRows": 3,
+          "unremarkedRows": 2,
+          "byHandler": [
+            {
+              "handledBy": "manager_zhang",
+              "count": 2
+            },
+            {
+              "handledBy": "admin",
+              "count": 1
+            }
+          ],
+          "remarkProgress": 60
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 10,
+    "summary": {
+      "totalBatches": 1,
+      "batchesWithUnremarkedRows": 1,
+      "totalFailedRows": 5,
+      "totalRemarkedRows": 3,
+      "totalUnremarkedRows": 2,
+      "overallProgress": 60
+    },
+    "appliedFilters": {
+      "remarkStatus": "remarked"
+    }
+  }
+}
+
+
+======================================================================
+📋 STEP 6: GET batch list filtered by remarkStatus=unremarked
+======================================================================
+Filter batches to show only those with unremarked rows
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches?pageSize=10&remarkStatus=unremarked
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "fileName": "test_disposition_http.csv",
+        "totalCount": 10,
+        "successCount": 5,
+        "failedCount": 5,
+        "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+        "status": "completed",
+        "createdAt": 1780745578105,
+        "createdBy": "operator_li",
+        "completedAt": 1780745578114,
+        "idempotencyKey": null,
+        "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+        "isIdempotencyHit": false,
+        "originalBatchId": null,
+        "submitCount": 1,
+        "remarkStats": {
+          "totalFailedRows": 5,
+          "remarkedRows": 3,
+          "unremarkedRows": 2
+        },
+        "dispositionStats": {
+          "totalFailedRows": 5,
+          "remarkedRows": 3,
+          "unremarkedRows": 2,
+          "byHandler": [
+            {
+              "handledBy": "manager_zhang",
+              "count": 2
+            },
+            {
+              "handledBy": "admin",
+              "count": 1
+            }
+          ],
+          "remarkProgress": 60
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 10,
+    "summary": {
+      "totalBatches": 1,
+      "batchesWithUnremarkedRows": 1,
+      "totalFailedRows": 5,
+      "totalRemarkedRows": 3,
+      "totalUnremarkedRows": 2,
+      "overallProgress": 60
+    },
+    "appliedFilters": {
+      "remarkStatus": "unremarked"
+    }
+  }
+}
+
+
+======================================================================
+📋 STEP 7: GET batch list filtered by handledBy=manager_zhang
+======================================================================
+Filter batches by handler
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches?pageSize=10&handledBy=manager_zhang
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "fileName": "test_disposition_http.csv",
+        "totalCount": 10,
+        "successCount": 5,
+        "failedCount": 5,
+        "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+        "status": "completed",
+        "createdAt": 1780745578105,
+        "createdBy": "operator_li",
+        "completedAt": 1780745578114,
+        "idempotencyKey": null,
+        "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+        "isIdempotencyHit": false,
+        "originalBatchId": null,
+        "submitCount": 1,
+        "remarkStats": {
+          "totalFailedRows": 5,
+          "remarkedRows": 3,
+          "unremarkedRows": 2
+        },
+        "dispositionStats": {
+          "totalFailedRows": 5,
+          "remarkedRows": 2,
+          "unremarkedRows": 3,
+          "byHandler": [
+            {
+              "handledBy": "manager_zhang",
+              "count": 2
+            },
+            {
+              "handledBy": "admin",
+              "count": 1
+            }
+          ],
+          "remarkProgress": 40
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 10,
+    "summary": {
+      "totalBatches": 1,
+      "batchesWithUnremarkedRows": 1,
+      "totalFailedRows": 5,
+      "totalRemarkedRows": 3,
+      "totalUnremarkedRows": 2,
+      "overallProgress": 60
+    },
+    "appliedFilters": {
+      "handledBy": "manager_zhang"
+    }
+  }
+}
+
+
+======================================================================
+📋 STEP 8: GET batch detail filtered by remarkStatus=remarked
+======================================================================
+Filter failed rows to show only remarked ones
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStatus=remarked&pageSize=10
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "fileName": "test_disposition_http.csv",
+      "totalCount": 10,
+      "successCount": 5,
+      "failedCount": 5,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780745578105,
+      "createdBy": "operator_li",
+      "completedAt": 1780745578114,
+      "idempotencyKey": null,
+      "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 5,
+        "remarkedRows": 3,
+        "unremarkedRows": 2
+      }
+    },
+    "dispositionStats": {
+      "totalFailedRows": 5,
+      "remarkedRows": 3,
+      "unremarkedRows": 2,
+      "byHandler": [
+        {
+          "handledBy": "manager_zhang",
+          "count": 2
+        },
+        {
+          "handledBy": "admin",
+          "count": 1
+        }
+      ],
+      "remarkProgress": 60
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-726f2356-4b08-4476-b3f3-dc6a30621022",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 2,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279260000,
+          "status": "failed",
+          "errorMessage": "第2行：温度\"INVALID_TEMP\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-86a5039a-6e74-46a1-aaba-c2f145e752c4",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 2,
+            "remarkContent": "温度格式错误，已反馈数据采集团队排查",
+            "handledBy": "manager_zhang",
+            "handledAt": 1780745578159,
+            "createdAt": 1780745578159,
+            "updatedAt": 1780745578159
+          }
+        },
+        {
+          "id": "row-9115ea91-1c3b-4d10-a957-25eb1580e54f",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 4,
+          "deviceId": "UNKNOWN-DISPO-001",
+          "temperature": -19,
+          "readingTime": 1780279380000,
+          "status": "failed",
+          "errorMessage": "第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-069c2e8d-a772-458c-83fe-eb23229eff03",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 4,
+            "remarkContent": "设备不存在，已通知门店补充设备台账",
+            "handledBy": "admin",
+            "handledAt": 1780745578418,
+            "createdAt": 1780745578418,
+            "updatedAt": 1780745578418
+          }
+        },
+        {
+          "id": "row-8d7e8d18-cdd8-46cd-b487-a0052e5db127",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 5,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279440000,
+          "status": "failed",
+          "errorMessage": "第5行：温度\"NOT_A_NUMBER\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-f537635f-a518-4f6e-97bf-5c2c58a159b9",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 5,
+            "remarkContent": "deviceId为空，已联系供应商确认数据格式",
+            "handledBy": "manager_zhang",
+            "handledAt": 1780745578692,
+            "createdAt": 1780745578692,
+            "updatedAt": 1780745578692
+          }
+        }
+      ],
+      "total": 3,
+      "page": 1,
+      "pageSize": 10
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-9ebfad36-d412-4d4c-810f-f50be4055120",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"5\"的异常处置备注: deviceId为空，已联系供应商确认数据格式",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578695
+      },
+      {
+        "id": "audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"4\"的异常处置备注: 设备不存在，已通知门店补充设备台账",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578421
+      },
+      {
+        "id": "audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578163
+      },
+      {
+        "id": "audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3",
+        "operationType": "reading_import",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_disposition_http.csv\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578114
+      }
+    ],
+    "appliedFilters": {
+      "remarkStatus": "remarked"
+    }
+  }
+}
+
+
+======================================================================
+📋 STEP 9: GET batch detail filtered by remarkStatus=unremarked
+======================================================================
+Filter failed rows to show only unremarked ones
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStatus=unremarked&pageSize=10
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "fileName": "test_disposition_http.csv",
+      "totalCount": 10,
+      "successCount": 5,
+      "failedCount": 5,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780745578105,
+      "createdBy": "operator_li",
+      "completedAt": 1780745578114,
+      "idempotencyKey": null,
+      "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 5,
+        "remarkedRows": 3,
+        "unremarkedRows": 2
+      }
+    },
+    "dispositionStats": {
+      "totalFailedRows": 5,
+      "remarkedRows": 3,
+      "unremarkedRows": 2,
+      "byHandler": [
+        {
+          "handledBy": "manager_zhang",
+          "count": 2
+        },
+        {
+          "handledBy": "admin",
+          "count": 1
+        }
+      ],
+      "remarkProgress": 60
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-8a8c00f5-56d3-47c7-a9b7-50440026b3d8",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 7,
+          "deviceId": "",
+          "temperature": -19.5,
+          "readingTime": 1780279560000,
+          "status": "failed",
+          "errorMessage": "第7行：设备ID不能为空",
+          "createdAt": 1780745578113,
+          "remark": null
+        },
+        {
+          "id": "row-e96b81cc-ce05-4ba2-bbf4-f33a33381b26",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 9,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279680000,
+          "status": "failed",
+          "errorMessage": "第9行：温度\"BAD_VALUE\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": null
+        }
+      ],
+      "total": 2,
+      "page": 1,
+      "pageSize": 10
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-9ebfad36-d412-4d4c-810f-f50be4055120",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"5\"的异常处置备注: deviceId为空，已联系供应商确认数据格式",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578695
+      },
+      {
+        "id": "audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"4\"的异常处置备注: 设备不存在，已通知门店补充设备台账",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578421
+      },
+      {
+        "id": "audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578163
+      },
+      {
+        "id": "audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3",
+        "operationType": "reading_import",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_disposition_http.csv\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578114
+      }
+    ],
+    "appliedFilters": {
+      "remarkStatus": "unremarked"
+    }
+  }
+}
+
+
+======================================================================
+📋 STEP 10: GET batch detail filtered by handledBy=admin
+======================================================================
+Filter failed rows by handler
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&handledBy=admin&pageSize=10
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "fileName": "test_disposition_http.csv",
+      "totalCount": 10,
+      "successCount": 5,
+      "failedCount": 5,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780745578105,
+      "createdBy": "operator_li",
+      "completedAt": 1780745578114,
+      "idempotencyKey": null,
+      "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 5,
+        "remarkedRows": 3,
+        "unremarkedRows": 2
+      }
+    },
+    "dispositionStats": {
+      "totalFailedRows": 5,
+      "remarkedRows": 1,
+      "unremarkedRows": 4,
+      "byHandler": [
+        {
+          "handledBy": "manager_zhang",
+          "count": 2
+        },
+        {
+          "handledBy": "admin",
+          "count": 1
+        }
+      ],
+      "remarkProgress": 20
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-9115ea91-1c3b-4d10-a957-25eb1580e54f",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 4,
+          "deviceId": "UNKNOWN-DISPO-001",
+          "temperature": -19,
+          "readingTime": 1780279380000,
+          "status": "failed",
+          "errorMessage": "第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-069c2e8d-a772-458c-83fe-eb23229eff03",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 4,
+            "remarkContent": "设备不存在，已通知门店补充设备台账",
+            "handledBy": "admin",
+            "handledAt": 1780745578418,
+            "createdAt": 1780745578418,
+            "updatedAt": 1780745578418
+          }
+        }
+      ],
+      "total": 1,
+      "page": 1,
+      "pageSize": 10
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-9ebfad36-d412-4d4c-810f-f50be4055120",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"5\"的异常处置备注: deviceId为空，已联系供应商确认数据格式",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578695
+      },
+      {
+        "id": "audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"4\"的异常处置备注: 设备不存在，已通知门店补充设备台账",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578421
+      },
+      {
+        "id": "audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578163
+      },
+      {
+        "id": "audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3",
+        "operationType": "reading_import",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_disposition_http.csv\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578114
+      }
+    ],
+    "appliedFilters": {
+      "handledBy": "admin"
+    }
+  }
+}
+
+
+======================================================================
+📋 STEP 11: GET batch detail filtered by time range
+======================================================================
+Filter failed rows by remark time range
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStartTime=1780745578155&remarkEndTime=1780745578688&pageSize=10
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "fileName": "test_disposition_http.csv",
+      "totalCount": 10,
+      "successCount": 5,
+      "failedCount": 5,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780745578105,
+      "createdBy": "operator_li",
+      "completedAt": 1780745578114,
+      "idempotencyKey": null,
+      "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 5,
+        "remarkedRows": 3,
+        "unremarkedRows": 2
+      }
+    },
+    "dispositionStats": {
+      "totalFailedRows": 5,
+      "remarkedRows": 2,
+      "unremarkedRows": 3,
+      "byHandler": [
+        {
+          "handledBy": "manager_zhang",
+          "count": 2
+        },
+        {
+          "handledBy": "admin",
+          "count": 1
+        }
+      ],
+      "remarkProgress": 40
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-726f2356-4b08-4476-b3f3-dc6a30621022",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 2,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279260000,
+          "status": "failed",
+          "errorMessage": "第2行：温度\"INVALID_TEMP\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-86a5039a-6e74-46a1-aaba-c2f145e752c4",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 2,
+            "remarkContent": "温度格式错误，已反馈数据采集团队排查",
+            "handledBy": "manager_zhang",
+            "handledAt": 1780745578159,
+            "createdAt": 1780745578159,
+            "updatedAt": 1780745578159
+          }
+        },
+        {
+          "id": "row-9115ea91-1c3b-4d10-a957-25eb1580e54f",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 4,
+          "deviceId": "UNKNOWN-DISPO-001",
+          "temperature": -19,
+          "readingTime": 1780279380000,
+          "status": "failed",
+          "errorMessage": "第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-069c2e8d-a772-458c-83fe-eb23229eff03",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 4,
+            "remarkContent": "设备不存在，已通知门店补充设备台账",
+            "handledBy": "admin",
+            "handledAt": 1780745578418,
+            "createdAt": 1780745578418,
+            "updatedAt": 1780745578418
+          }
+        }
+      ],
+      "total": 2,
+      "page": 1,
+      "pageSize": 10
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-9ebfad36-d412-4d4c-810f-f50be4055120",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"5\"的异常处置备注: deviceId为空，已联系供应商确认数据格式",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578695
+      },
+      {
+        "id": "audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"4\"的异常处置备注: 设备不存在，已通知门店补充设备台账",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578421
+      },
+      {
+        "id": "audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578163
+      },
+      {
+        "id": "audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3",
+        "operationType": "reading_import",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_disposition_http.csv\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578114
+      }
+    ],
+    "appliedFilters": {
+      "remarkStartTime": 1780745578155,
+      "remarkEndTime": 1780745578688
+    }
+  }
+}
+
+
+======================================================================
+📋 STEP 12: GET batch detail with combined filters
+======================================================================
+Filter by remarkStatus=remarked AND handledBy=manager_zhang
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStatus=remarked&handledBy=manager_zhang&pageSize=10
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "fileName": "test_disposition_http.csv",
+      "totalCount": 10,
+      "successCount": 5,
+      "failedCount": 5,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780745578105,
+      "createdBy": "operator_li",
+      "completedAt": 1780745578114,
+      "idempotencyKey": null,
+      "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 5,
+        "remarkedRows": 3,
+        "unremarkedRows": 2
+      }
+    },
+    "dispositionStats": {
+      "totalFailedRows": 5,
+      "remarkedRows": 2,
+      "unremarkedRows": 3,
+      "byHandler": [
+        {
+          "handledBy": "manager_zhang",
+          "count": 2
+        },
+        {
+          "handledBy": "admin",
+          "count": 1
+        }
+      ],
+      "remarkProgress": 40
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-726f2356-4b08-4476-b3f3-dc6a30621022",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 2,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279260000,
+          "status": "failed",
+          "errorMessage": "第2行：温度\"INVALID_TEMP\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-86a5039a-6e74-46a1-aaba-c2f145e752c4",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 2,
+            "remarkContent": "温度格式错误，已反馈数据采集团队排查",
+            "handledBy": "manager_zhang",
+            "handledAt": 1780745578159,
+            "createdAt": 1780745578159,
+            "updatedAt": 1780745578159
+          }
+        },
+        {
+          "id": "row-8d7e8d18-cdd8-46cd-b487-a0052e5db127",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 5,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279440000,
+          "status": "failed",
+          "errorMessage": "第5行：温度\"NOT_A_NUMBER\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-f537635f-a518-4f6e-97bf-5c2c58a159b9",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 5,
+            "remarkContent": "deviceId为空，已联系供应商确认数据格式",
+            "handledBy": "manager_zhang",
+            "handledAt": 1780745578692,
+            "createdAt": 1780745578692,
+            "updatedAt": 1780745578692
+          }
+        }
+      ],
+      "total": 2,
+      "page": 1,
+      "pageSize": 10
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-9ebfad36-d412-4d4c-810f-f50be4055120",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"5\"的异常处置备注: deviceId为空，已联系供应商确认数据格式",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578695
+      },
+      {
+        "id": "audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"4\"的异常处置备注: 设备不存在，已通知门店补充设备台账",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578421
+      },
+      {
+        "id": "audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578163
+      },
+      {
+        "id": "audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3",
+        "operationType": "reading_import",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_disposition_http.csv\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578114
+      }
+    ],
+    "appliedFilters": {
+      "remarkStatus": "remarked",
+      "handledBy": "manager_zhang"
+    }
+  }
+}
+
+
+======================================================================
+📋 STEP 13: GET batch detail with pagination + filter
+======================================================================
+Test pagination works correctly with filters applied
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStatus=remarked&page=1&pageSize=2
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "fileName": "test_disposition_http.csv",
+      "totalCount": 10,
+      "successCount": 5,
+      "failedCount": 5,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780745578105,
+      "createdBy": "operator_li",
+      "completedAt": 1780745578114,
+      "idempotencyKey": null,
+      "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 5,
+        "remarkedRows": 3,
+        "unremarkedRows": 2
+      }
+    },
+    "dispositionStats": {
+      "totalFailedRows": 5,
+      "remarkedRows": 3,
+      "unremarkedRows": 2,
+      "byHandler": [
+        {
+          "handledBy": "manager_zhang",
+          "count": 2
+        },
+        {
+          "handledBy": "admin",
+          "count": 1
+        }
+      ],
+      "remarkProgress": 60
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-726f2356-4b08-4476-b3f3-dc6a30621022",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 2,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279260000,
+          "status": "failed",
+          "errorMessage": "第2行：温度\"INVALID_TEMP\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-86a5039a-6e74-46a1-aaba-c2f145e752c4",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 2,
+            "remarkContent": "温度格式错误，已反馈数据采集团队排查",
+            "handledBy": "manager_zhang",
+            "handledAt": 1780745578159,
+            "createdAt": 1780745578159,
+            "updatedAt": 1780745578159
+          }
+        },
+        {
+          "id": "row-9115ea91-1c3b-4d10-a957-25eb1580e54f",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 4,
+          "deviceId": "UNKNOWN-DISPO-001",
+          "temperature": -19,
+          "readingTime": 1780279380000,
+          "status": "failed",
+          "errorMessage": "第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-069c2e8d-a772-458c-83fe-eb23229eff03",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 4,
+            "remarkContent": "设备不存在，已通知门店补充设备台账",
+            "handledBy": "admin",
+            "handledAt": 1780745578418,
+            "createdAt": 1780745578418,
+            "updatedAt": 1780745578418
+          }
+        }
+      ],
+      "total": 3,
+      "page": 1,
+      "pageSize": 2
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-9ebfad36-d412-4d4c-810f-f50be4055120",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"5\"的异常处置备注: deviceId为空，已联系供应商确认数据格式",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578695
+      },
+      {
+        "id": "audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"4\"的异常处置备注: 设备不存在，已通知门店补充设备台账",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578421
+      },
+      {
+        "id": "audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578163
+      },
+      {
+        "id": "audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3",
+        "operationType": "reading_import",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_disposition_http.csv\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578114
+      }
+    ],
+    "appliedFilters": {
+      "remarkStatus": "remarked"
+    }
+  }
+}
+
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStatus=remarked&page=2&pageSize=2
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "fileName": "test_disposition_http.csv",
+      "totalCount": 10,
+      "successCount": 5,
+      "failedCount": 5,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780745578105,
+      "createdBy": "operator_li",
+      "completedAt": 1780745578114,
+      "idempotencyKey": null,
+      "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 5,
+        "remarkedRows": 3,
+        "unremarkedRows": 2
+      }
+    },
+    "dispositionStats": {
+      "totalFailedRows": 5,
+      "remarkedRows": 3,
+      "unremarkedRows": 2,
+      "byHandler": [
+        {
+          "handledBy": "manager_zhang",
+          "count": 2
+        },
+        {
+          "handledBy": "admin",
+          "count": 1
+        }
+      ],
+      "remarkProgress": 60
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-8d7e8d18-cdd8-46cd-b487-a0052e5db127",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 5,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279440000,
+          "status": "failed",
+          "errorMessage": "第5行：温度\"NOT_A_NUMBER\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-f537635f-a518-4f6e-97bf-5c2c58a159b9",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 5,
+            "remarkContent": "deviceId为空，已联系供应商确认数据格式",
+            "handledBy": "manager_zhang",
+            "handledAt": 1780745578692,
+            "createdAt": 1780745578692,
+            "updatedAt": 1780745578692
+          }
+        }
+      ],
+      "total": 3,
+      "page": 2,
+      "pageSize": 2
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-9ebfad36-d412-4d4c-810f-f50be4055120",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"5\"的异常处置备注: deviceId为空，已联系供应商确认数据格式",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578695
+      },
+      {
+        "id": "audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"4\"的异常处置备注: 设备不存在，已通知门店补充设备台账",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578421
+      },
+      {
+        "id": "audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578163
+      },
+      {
+        "id": "audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3",
+        "operationType": "reading_import",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_disposition_http.csv\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578114
+      }
+    ],
+    "appliedFilters": {
+      "remarkStatus": "remarked"
+    }
+  }
+}
+
+
+======================================================================
+📋 STEP 14: Export batch as JSON with filter
+======================================================================
+JSON export should include filters and filtered results
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261/export?format=json&rowStatus=failed&remarkStatus=remarked
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "operator_li"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+"{\n  \"batch\": {\n    \"id\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n    \"fileName\": \"test_disposition_http.csv\",\n    \"status\": \"completed\",\n    \"createdBy\": \"operator_li\",\n    \"createdAt\": 1780745578105,\n    \"completedAt\": 1780745578114,\n    \"totalCount\": 10,\n    \"successCount\": 5,\n    \"failedCount\": 5,\n    \"errorDetails\": \"第2行：温度\\\"INVALID_TEMP\\\"不是有效数字; 第4行：设备\\\"UNKNOWN-DISPO-001\\\"不存在，请到设备台账中添加; 第5行：温度\\\"NOT_A_NUMBER\\\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\\\"BAD_VALUE\\\"不是有效数字\",\n    \"idempotencyKey\": null,\n    \"fileContentHash\": \"eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f\",\n    \"isIdempotencyHit\": false,\n    \"originalBatchId\": null,\n    \"submitCount\": 1,\n    \"remarkStats\": {\n      \"totalFailedRows\": 5,\n      \"remarkedRows\": 3,\n      \"unremarkedRows\": 2\n    },\n    \"dispositionStats\": {\n      \"totalFailedRows\": 5,\n      \"remarkedRows\": 3,\n      \"unremarkedRows\": 2,\n      \"byHandler\": [\n        {\n          \"handledBy\": \"manager_zhang\",\n          \"count\": 2\n        },\n        {\n          \"handledBy\": \"admin\",\n          \"count\": 1\n        }\n      ],\n      \"remarkProgress\": 60\n    }\n  },\n  \"dispositionStats\": {\n    \"totalFailedRows\": 5,\n    \"remarkedRows\": 3,\n    \"unremarkedRows\": 2,\n    \"byHandler\": [\n      {\n        \"handledBy\": \"manager_zhang\",\n        \"count\": 2\n      },\n      {\n        \"handledBy\": \"admin\",\n        \"count\": 1\n      }\n    ],\n    \"remarkProgress\": 60\n  },\n  \"rowResults\": [\n    {\n      \"rowIndex\": 2,\n      \"deviceId\": \"DEVDISPO001\",\n      \"temperature\": null,\n      \"readingTime\": 1780279260000,\n      \"status\": \"failed\",\n      \"errorMessage\": \"第2行：温度\\\"INVALID_TEMP\\\"不是有效数字\",\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"id\": \"row-726f2356-4b08-4476-b3f3-dc6a30621022\",\n      \"createdAt\": 1780745578113,\n      \"remark\": {\n        \"remarkContent\": \"温度格式错误，已反馈数据采集团队排查\",\n        \"handledBy\": \"manager_zhang\",\n        \"handledAt\": 1780745578159,\n        \"createdAt\": 1780745578159,\n        \"updatedAt\": 1780745578159\n      }\n    },\n    {\n      \"rowIndex\": 4,\n      \"deviceId\": \"UNKNOWN-DISPO-001\",\n      \"temperature\": -19,\n      \"readingTime\": 1780279380000,\n      \"status\": \"failed\",\n      \"errorMessage\": \"第4行：设备\\\"UNKNOWN-DISPO-001\\\"不存在，请到设备台账中添加\",\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"id\": \"row-9115ea91-1c3b-4d10-a957-25eb1580e54f\",\n      \"createdAt\": 1780745578113,\n      \"remark\": {\n        \"remarkContent\": \"设备不存在，已通知门店补充设备台账\",\n        \"handledBy\": \"admin\",\n        \"handledAt\": 1780745578418,\n        \"createdAt\": 1780745578418,\n        \"updatedAt\": 1780745578418\n      }\n    },\n    {\n      \"rowIndex\": 5,\n      \"deviceId\": \"DEVDISPO001\",\n      \"temperature\": null,\n      \"readingTime\": 1780279440000,\n      \"status\": \"failed\",\n      \"errorMessage\": \"第5行：温度\\\"NOT_A_NUMBER\\\"不是有效数字\",\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"id\": \"row-8d7e8d18-cdd8-46cd-b487-a0052e5db127\",\n      \"createdAt\": 1780745578113,\n      \"remark\": {\n        \"remarkContent\": \"deviceId为空，已联系供应商确认数据格式\",\n        \"handledBy\": \"manager_zhang\",\n        \"handledAt\": 1780745578692,\n        \"createdAt\": 1780745578692,\n        \"updatedAt\": 1780745578692\n      }\n    }\n  ],\n  \"alarms\": [],\n  \"auditLogs\": [\n    {\n      \"operationType\": \"batch_row_remark_update\",\n      \"operator\": \"manager_zhang\",\n      \"details\": \"新增批次\\\"batch-f79c1168-bbc3-410c-adca-a57db9811261\\\"行号\\\"5\\\"的异常处置备注: deviceId为空，已联系供应商确认数据格式\",\n      \"createdAt\": 1780745578695,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5\",\n      \"entityType\": \"batch_row_remark\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-9ebfad36-d412-4d4c-810f-f50be4055120\"\n    },\n    {\n      \"operationType\": \"batch_row_remark_update\",\n      \"operator\": \"admin\",\n      \"details\": \"新增批次\\\"batch-f79c1168-bbc3-410c-adca-a57db9811261\\\"行号\\\"4\\\"的异常处置备注: 设备不存在，已通知门店补充设备台账\",\n      \"createdAt\": 1780745578421,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4\",\n      \"entityType\": \"batch_row_remark\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa\"\n    },\n    {\n      \"operationType\": \"batch_row_remark_update\",\n      \"operator\": \"manager_zhang\",\n      \"details\": \"新增批次\\\"batch-f79c1168-bbc3-410c-adca-a57db9811261\\\"行号\\\"2\\\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查\",\n      \"createdAt\": 1780745578163,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2\",\n      \"entityType\": \"batch_row_remark\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0\"\n    },\n    {\n      \"operationType\": \"reading_import\",\n      \"operator\": \"operator_li\",\n      \"details\": \"导入CSV文件\\\"test_disposition_http.csv\\\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条\",\n      \"createdAt\": 1780745578114,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"entityType\": \"import_batch\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3\"\n    }\n  ],\n  \"filters\": {\n    \"rowStatus\": \"failed\",\n    \"remarkStatus\": \"remarked\"\n  }\n}"
+
+
+======================================================================
+📋 STEP 15: Export batch as CSV with filter
+======================================================================
+CSV export should include applied filters section
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261/export?format=csv&rowStatus=failed&remarkStatus=unremarked
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+"=== 批次信息 ===\nid,fileName,status,createdBy,createdAt,completedAt,totalCount,successCount,failedCount,errorDetails,idempotencyKey,fileContentHash,isIdempotencyHit,originalBatchId,submitCount,remarkStats,dispositionStats\nbatch-f79c1168-bbc3-410c-adca-a57db9811261,test_disposition_http.csv,completed,operator_li,1780745578105,1780745578114,10,5,5,\"第2行：温度\"\"INVALID_TEMP\"\"不是有效数字; 第4行：设备\"\"UNKNOWN-DISPO-001\"\"不存在，请到设备台账中添加; 第5行：温度\"\"NOT_A_NUMBER\"\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"\"BAD_VALUE\"\"不是有效数字\",,eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f,false,,1,\"{\"\"totalFailedRows\"\":5,\"\"remarkedRows\"\":3,\"\"unremarkedRows\"\":2}\",\"{\"\"totalFailedRows\"\":5,\"\"remarkedRows\"\":3,\"\"unremarkedRows\"\":2,\"\"byHandler\"\":[{\"\"handledBy\"\":\"\"manager_zhang\"\",\"\"count\"\":2},{\"\"handledBy\"\":\"\"admin\"\",\"\"count\"\":1}],\"\"remarkProgress\"\":60}\"\n\n=== 应用筛选条件 ===\n筛选条件,值\nrowStatus,failed\nremarkStatus,unremarked\nhandledBy,\nremarkStartTime,\nremarkEndTime,\n\n=== 逐行结果 ===\nrowIndex,deviceId,temperature,readingTime,status,errorMessage,importBatchId,id,createdAt,remark_remarkContent,remark_handledBy,remark_handledAt,remark_createdAt,remark_updatedAt\n7,,-19.5,1780279560000,failed,第7行：设备ID不能为空,batch-f79c1168-bbc3-410c-adca-a57db9811261,row-8a8c00f5-56d3-47c7-a9b7-50440026b3d8,1780745578113,,,,,\n9,DEVDISPO001,,1780279680000,failed,\"第9行：温度\"\"BAD_VALUE\"\"不是有效数字\",batch-f79c1168-bbc3-410c-adca-a57db9811261,row-e96b81cc-ce05-4ba2-bbf4-f33a33381b26,1780745578113,,,,,\n\n=== 关联告警 ===\nid,deviceId,type,threshold,temperature,readingTime,status,readingId,acknowledgedAt,acknowledgedBy,recoveredAt,recoveredReadingId,recoveredTemperature,closedAt,closedBy,closeNote,createdAt,updatedAt\n\n=== 审计日志 ===\noperationType,operator,details,createdAt,entityId,entityType,storeId,deviceId,importBatchId,alarmId,id\nbatch_row_remark_update,manager_zhang,\"新增批次\"\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"\"行号\"\"5\"\"的异常处置备注: deviceId为空，已联系供应商确认数据格式\",1780745578695,batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5,batch_row_remark,,,batch-f79c1168-bbc3-410c-adca-a57db9811261,,audit-9ebfad36-d412-4d4c-810f-f50be4055120\nbatch_row_remark_update,admin,\"新增批次\"\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"\"行号\"\"4\"\"的异常处置备注: 设备不存在，已通知门店补充设备台账\",1780745578421,batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4,batch_row_remark,,,batch-f79c1168-bbc3-410c-adca-a57db9811261,,audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa\nbatch_row_remark_update,manager_zhang,\"新增批次\"\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"\"行号\"\"2\"\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查\",1780745578163,batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2,batch_row_remark,,,batch-f79c1168-bbc3-410c-adca-a57db9811261,,audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0\nreading_import,operator_li,\"导入CSV文件\"\"test_disposition_http.csv\"\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条\",1780745578114,batch-f79c1168-bbc3-410c-adca-a57db9811261,import_batch,,,batch-f79c1168-bbc3-410c-adca-a57db9811261,,audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3"
+
+
+======================================================================
+📋 STEP 16: Test permission - viewer can view filtered results
+======================================================================
+viewer role can view filtered results but cannot add remarks
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStatus=unremarked
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "fileName": "test_disposition_http.csv",
+      "totalCount": 10,
+      "successCount": 5,
+      "failedCount": 5,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780745578105,
+      "createdBy": "operator_li",
+      "completedAt": 1780745578114,
+      "idempotencyKey": null,
+      "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 5,
+        "remarkedRows": 3,
+        "unremarkedRows": 2
+      }
+    },
+    "dispositionStats": {
+      "totalFailedRows": 5,
+      "remarkedRows": 3,
+      "unremarkedRows": 2,
+      "byHandler": [
+        {
+          "handledBy": "manager_zhang",
+          "count": 2
+        },
+        {
+          "handledBy": "admin",
+          "count": 1
+        }
+      ],
+      "remarkProgress": 60
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-8a8c00f5-56d3-47c7-a9b7-50440026b3d8",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 7,
+          "deviceId": "",
+          "temperature": -19.5,
+          "readingTime": 1780279560000,
+          "status": "failed",
+          "errorMessage": "第7行：设备ID不能为空",
+          "createdAt": 1780745578113,
+          "remark": null
+        },
+        {
+          "id": "row-e96b81cc-ce05-4ba2-bbf4-f33a33381b26",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 9,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279680000,
+          "status": "failed",
+          "errorMessage": "第9行：温度\"BAD_VALUE\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": null
+        }
+      ],
+      "total": 2,
+      "page": 1,
+      "pageSize": 100
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-9ebfad36-d412-4d4c-810f-f50be4055120",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"5\"的异常处置备注: deviceId为空，已联系供应商确认数据格式",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578695
+      },
+      {
+        "id": "audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"4\"的异常处置备注: 设备不存在，已通知门店补充设备台账",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578421
+      },
+      {
+        "id": "audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578163
+      },
+      {
+        "id": "audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3",
+        "operationType": "reading_import",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_disposition_http.csv\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578114
+      }
+    ],
+    "appliedFilters": {
+      "remarkStatus": "unremarked"
+    }
+  }
+}
+
+
+----------------------------------------------------------------------
+>>> PUT http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261/rows/7/remark
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": "viewer trying to add remark"
+}
+
+
+<<< Status: 403
+----------------------------------------------------------------------
+{
+  "success": false,
+  "code": "UNAUTHORIZED",
+  "message": "用户\"viewer_wang\"没有\"manage_row_remarks\"操作权限，请联系管理员授权"
+}
+
+
+======================================================================
+📋 STEP 17: Test permission - operator can view and export
+======================================================================
+operator role can view and export but cannot add remarks
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261/export?format=json&rowStatus=failed&remarkStatus=remarked
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "operator_li"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+"{\n  \"batch\": {\n    \"id\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n    \"fileName\": \"test_disposition_http.csv\",\n    \"status\": \"completed\",\n    \"createdBy\": \"operator_li\",\n    \"createdAt\": 1780745578105,\n    \"completedAt\": 1780745578114,\n    \"totalCount\": 10,\n    \"successCount\": 5,\n    \"failedCount\": 5,\n    \"errorDetails\": \"第2行：温度\\\"INVALID_TEMP\\\"不是有效数字; 第4行：设备\\\"UNKNOWN-DISPO-001\\\"不存在，请到设备台账中添加; 第5行：温度\\\"NOT_A_NUMBER\\\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\\\"BAD_VALUE\\\"不是有效数字\",\n    \"idempotencyKey\": null,\n    \"fileContentHash\": \"eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f\",\n    \"isIdempotencyHit\": false,\n    \"originalBatchId\": null,\n    \"submitCount\": 1,\n    \"remarkStats\": {\n      \"totalFailedRows\": 5,\n      \"remarkedRows\": 3,\n      \"unremarkedRows\": 2\n    },\n    \"dispositionStats\": {\n      \"totalFailedRows\": 5,\n      \"remarkedRows\": 3,\n      \"unremarkedRows\": 2,\n      \"byHandler\": [\n        {\n          \"handledBy\": \"manager_zhang\",\n          \"count\": 2\n        },\n        {\n          \"handledBy\": \"admin\",\n          \"count\": 1\n        }\n      ],\n      \"remarkProgress\": 60\n    }\n  },\n  \"dispositionStats\": {\n    \"totalFailedRows\": 5,\n    \"remarkedRows\": 3,\n    \"unremarkedRows\": 2,\n    \"byHandler\": [\n      {\n        \"handledBy\": \"manager_zhang\",\n        \"count\": 2\n      },\n      {\n        \"handledBy\": \"admin\",\n        \"count\": 1\n      }\n    ],\n    \"remarkProgress\": 60\n  },\n  \"rowResults\": [\n    {\n      \"rowIndex\": 2,\n      \"deviceId\": \"DEVDISPO001\",\n      \"temperature\": null,\n      \"readingTime\": 1780279260000,\n      \"status\": \"failed\",\n      \"errorMessage\": \"第2行：温度\\\"INVALID_TEMP\\\"不是有效数字\",\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"id\": \"row-726f2356-4b08-4476-b3f3-dc6a30621022\",\n      \"createdAt\": 1780745578113,\n      \"remark\": {\n        \"remarkContent\": \"温度格式错误，已反馈数据采集团队排查\",\n        \"handledBy\": \"manager_zhang\",\n        \"handledAt\": 1780745578159,\n        \"createdAt\": 1780745578159,\n        \"updatedAt\": 1780745578159\n      }\n    },\n    {\n      \"rowIndex\": 4,\n      \"deviceId\": \"UNKNOWN-DISPO-001\",\n      \"temperature\": -19,\n      \"readingTime\": 1780279380000,\n      \"status\": \"failed\",\n      \"errorMessage\": \"第4行：设备\\\"UNKNOWN-DISPO-001\\\"不存在，请到设备台账中添加\",\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"id\": \"row-9115ea91-1c3b-4d10-a957-25eb1580e54f\",\n      \"createdAt\": 1780745578113,\n      \"remark\": {\n        \"remarkContent\": \"设备不存在，已通知门店补充设备台账\",\n        \"handledBy\": \"admin\",\n        \"handledAt\": 1780745578418,\n        \"createdAt\": 1780745578418,\n        \"updatedAt\": 1780745578418\n      }\n    },\n    {\n      \"rowIndex\": 5,\n      \"deviceId\": \"DEVDISPO001\",\n      \"temperature\": null,\n      \"readingTime\": 1780279440000,\n      \"status\": \"failed\",\n      \"errorMessage\": \"第5行：温度\\\"NOT_A_NUMBER\\\"不是有效数字\",\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"id\": \"row-8d7e8d18-cdd8-46cd-b487-a0052e5db127\",\n      \"createdAt\": 1780745578113,\n      \"remark\": {\n        \"remarkContent\": \"deviceId为空，已联系供应商确认数据格式\",\n        \"handledBy\": \"manager_zhang\",\n        \"handledAt\": 1780745578692,\n        \"createdAt\": 1780745578692,\n        \"updatedAt\": 1780745578692\n      }\n    }\n  ],\n  \"alarms\": [],\n  \"auditLogs\": [\n    {\n      \"operationType\": \"batch_row_remark_update\",\n      \"operator\": \"manager_zhang\",\n      \"details\": \"新增批次\\\"batch-f79c1168-bbc3-410c-adca-a57db9811261\\\"行号\\\"5\\\"的异常处置备注: deviceId为空，已联系供应商确认数据格式\",\n      \"createdAt\": 1780745578695,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5\",\n      \"entityType\": \"batch_row_remark\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-9ebfad36-d412-4d4c-810f-f50be4055120\"\n    },\n    {\n      \"operationType\": \"batch_row_remark_update\",\n      \"operator\": \"admin\",\n      \"details\": \"新增批次\\\"batch-f79c1168-bbc3-410c-adca-a57db9811261\\\"行号\\\"4\\\"的异常处置备注: 设备不存在，已通知门店补充设备台账\",\n      \"createdAt\": 1780745578421,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4\",\n      \"entityType\": \"batch_row_remark\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa\"\n    },\n    {\n      \"operationType\": \"batch_row_remark_update\",\n      \"operator\": \"manager_zhang\",\n      \"details\": \"新增批次\\\"batch-f79c1168-bbc3-410c-adca-a57db9811261\\\"行号\\\"2\\\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查\",\n      \"createdAt\": 1780745578163,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2\",\n      \"entityType\": \"batch_row_remark\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0\"\n    },\n    {\n      \"operationType\": \"reading_import\",\n      \"operator\": \"operator_li\",\n      \"details\": \"导入CSV文件\\\"test_disposition_http.csv\\\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条\",\n      \"createdAt\": 1780745578114,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"entityType\": \"import_batch\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3\"\n    }\n  ],\n  \"filters\": {\n    \"rowStatus\": \"failed\",\n    \"remarkStatus\": \"remarked\"\n  }\n}"
+
+
+----------------------------------------------------------------------
+>>> PUT http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261/rows/7/remark
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "operator_li",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": "operator trying to add remark"
+}
+
+
+<<< Status: 403
+----------------------------------------------------------------------
+{
+  "success": false,
+  "code": "UNAUTHORIZED",
+  "message": "用户\"operator_li\"没有\"manage_row_remarks\"操作权限，请联系管理员授权"
+}
+
+
+======================================================================
+📋 STEP 18: Test invalid filter parameters
+======================================================================
+Invalid parameters should return 400 with clear error messages
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStatus=invalid_value
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 400
+----------------------------------------------------------------------
+{
+  "success": false,
+  "message": "remarkStatus: Invalid enum value. Expected 'remarked' | 'unremarked', received 'invalid_value'",
+  "errors": [
+    "remarkStatus: Invalid enum value. Expected 'remarked' | 'unremarked', received 'invalid_value'"
+  ]
+}
+
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&handledBy=unknown_user
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 400
+----------------------------------------------------------------------
+{
+  "success": false,
+  "message": "handledBy: 处理人必须是已知用户: admin, manager_zhang, operator_li, viewer_wang",
+  "errors": [
+    "handledBy: 处理人必须是已知用户: admin, manager_zhang, operator_li, viewer_wang"
+  ]
+}
+
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStatus=unremarked&handledBy=admin
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 400
+----------------------------------------------------------------------
+{
+  "success": false,
+  "message": "remarkStatus: 筛选未备注行时不能同时指定处理人或处理时间范围",
+  "errors": [
+    "remarkStatus: 筛选未备注行时不能同时指定处理人或处理时间范围"
+  ]
+}
+
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStatus=unremarked&remarkStartTime=1780745578817
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 400
+----------------------------------------------------------------------
+{
+  "success": false,
+  "message": "remarkStatus: 筛选未备注行时不能同时指定处理人或处理时间范围",
+  "errors": [
+    "remarkStatus: 筛选未备注行时不能同时指定处理人或处理时间范围"
+  ]
+}
+
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStartTime=123
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 400
+----------------------------------------------------------------------
+{
+  "success": false,
+  "message": "remarkStartTime: remarkStartTime 必须是有效的时间戳（毫秒）",
+  "errors": [
+    "remarkStartTime: remarkStartTime 必须是有效的时间戳（毫秒）"
+  ]
+}
+
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStartTime=1780745678823&remarkEndTime=1780745578823
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 400
+----------------------------------------------------------------------
+{
+  "success": false,
+  "message": "remarkStartTime: remarkStartTime 不能大于 remarkEndTime",
+  "errors": [
+    "remarkStartTime: remarkStartTime 不能大于 remarkEndTime"
+  ]
+}
+
+
+======================================================================
+📋 STEP 19: Test stats sync after remark update
+======================================================================
+dispositionStats should update after remark is modified
+
+----------------------------------------------------------------------
+>>> PUT http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261/rows/2/remark
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": "温度格式错误，已反馈数据采集团队，已修复采集程序"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "remark": {
+      "id": "remark-86a5039a-6e74-46a1-aaba-c2f145e752c4",
+      "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "rowIndex": 2,
+      "remarkContent": "温度格式错误，已反馈数据采集团队，已修复采集程序",
+      "handledBy": "admin",
+      "handledAt": 1780745578833,
+      "createdAt": 1780745578159,
+      "updatedAt": 1780745578833
+    },
+    "isNew": false,
+    "isClear": false
+  },
+  "message": "备注已更新"
+}
+
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&pageSize=1
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "fileName": "test_disposition_http.csv",
+      "totalCount": 10,
+      "successCount": 5,
+      "failedCount": 5,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780745578105,
+      "createdBy": "operator_li",
+      "completedAt": 1780745578114,
+      "idempotencyKey": null,
+      "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 5,
+        "remarkedRows": 3,
+        "unremarkedRows": 2
+      }
+    },
+    "dispositionStats": {
+      "totalFailedRows": 5,
+      "remarkedRows": 3,
+      "unremarkedRows": 2,
+      "byHandler": [
+        {
+          "handledBy": "admin",
+          "count": 2
+        },
+        {
+          "handledBy": "manager_zhang",
+          "count": 1
+        }
+      ],
+      "remarkProgress": 60
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-726f2356-4b08-4476-b3f3-dc6a30621022",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 2,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279260000,
+          "status": "failed",
+          "errorMessage": "第2行：温度\"INVALID_TEMP\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-86a5039a-6e74-46a1-aaba-c2f145e752c4",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 2,
+            "remarkContent": "温度格式错误，已反馈数据采集团队，已修复采集程序",
+            "handledBy": "admin",
+            "handledAt": 1780745578833,
+            "createdAt": 1780745578159,
+            "updatedAt": 1780745578833
+          }
+        }
+      ],
+      "total": 5,
+      "page": 1,
+      "pageSize": 1
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-ab30df09-2bcd-4993-b7db-a574da8b48ac",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "更新批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队，已修复采集程序",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578836
+      },
+      {
+        "id": "audit-9ebfad36-d412-4d4c-810f-f50be4055120",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"5\"的异常处置备注: deviceId为空，已联系供应商确认数据格式",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578695
+      },
+      {
+        "id": "audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"4\"的异常处置备注: 设备不存在，已通知门店补充设备台账",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578421
+      },
+      {
+        "id": "audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578163
+      },
+      {
+        "id": "audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3",
+        "operationType": "reading_import",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_disposition_http.csv\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578114
+      }
+    ],
+    "appliedFilters": {}
+  }
+}
+
+
+======================================================================
+📋 STEP 20: Test stats sync after remark clear
+======================================================================
+dispositionStats should update after remark is cleared
+
+----------------------------------------------------------------------
+>>> PUT http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261/rows/2/remark
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": ""
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "remark": {
+      "id": "remark-86a5039a-6e74-46a1-aaba-c2f145e752c4",
+      "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "rowIndex": 2,
+      "remarkContent": "",
+      "handledBy": "admin",
+      "handledAt": 1780745578854,
+      "createdAt": 1780745578159,
+      "updatedAt": 1780745578854
+    },
+    "isNew": false,
+    "isClear": true
+  },
+  "message": "备注已清空"
+}
+
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&pageSize=1
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "fileName": "test_disposition_http.csv",
+      "totalCount": 10,
+      "successCount": 5,
+      "failedCount": 5,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780745578105,
+      "createdBy": "operator_li",
+      "completedAt": 1780745578114,
+      "idempotencyKey": null,
+      "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 5,
+        "remarkedRows": 2,
+        "unremarkedRows": 3
+      }
+    },
+    "dispositionStats": {
+      "totalFailedRows": 5,
+      "remarkedRows": 2,
+      "unremarkedRows": 3,
+      "byHandler": [
+        {
+          "handledBy": "manager_zhang",
+          "count": 1
+        },
+        {
+          "handledBy": "admin",
+          "count": 1
+        }
+      ],
+      "remarkProgress": 40
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-726f2356-4b08-4476-b3f3-dc6a30621022",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 2,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279260000,
+          "status": "failed",
+          "errorMessage": "第2行：温度\"INVALID_TEMP\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": null
+        }
+      ],
+      "total": 5,
+      "page": 1,
+      "pageSize": 1
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-5725acd6-bd9a-4eb2-86d1-d458411092c6",
+        "operationType": "batch_row_remark_clear",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "清空批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注，原备注: 温度格式错误，已反馈数据采集团队，已修复采集程序",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578857
+      },
+      {
+        "id": "audit-ab30df09-2bcd-4993-b7db-a574da8b48ac",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "更新批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队，已修复采集程序",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578836
+      },
+      {
+        "id": "audit-9ebfad36-d412-4d4c-810f-f50be4055120",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"5\"的异常处置备注: deviceId为空，已联系供应商确认数据格式",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578695
+      },
+      {
+        "id": "audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"4\"的异常处置备注: 设备不存在，已通知门店补充设备台账",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578421
+      },
+      {
+        "id": "audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578163
+      },
+      {
+        "id": "audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3",
+        "operationType": "reading_import",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_disposition_http.csv\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578114
+      }
+    ],
+    "appliedFilters": {}
+  }
+}
+
+
+======================================================================
+📋 STEP 21: Verify all functionality persists after server restart
+======================================================================
+Query filtered results after server restart with same DB_PATH
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches?pageSize=10
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "fileName": "test_disposition_http.csv",
+        "totalCount": 10,
+        "successCount": 5,
+        "failedCount": 5,
+        "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+        "status": "completed",
+        "createdAt": 1780745578105,
+        "createdBy": "operator_li",
+        "completedAt": 1780745578114,
+        "idempotencyKey": null,
+        "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+        "isIdempotencyHit": false,
+        "originalBatchId": null,
+        "submitCount": 1,
+        "remarkStats": {
+          "totalFailedRows": 5,
+          "remarkedRows": 2,
+          "unremarkedRows": 3
+        },
+        "dispositionStats": {
+          "totalFailedRows": 5,
+          "remarkedRows": 2,
+          "unremarkedRows": 3,
+          "byHandler": [
+            {
+              "handledBy": "manager_zhang",
+              "count": 1
+            },
+            {
+              "handledBy": "admin",
+              "count": 1
+            }
+          ],
+          "remarkProgress": 40
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 10,
+    "summary": {
+      "totalBatches": 1,
+      "batchesWithUnremarkedRows": 1,
+      "totalFailedRows": 5,
+      "totalRemarkedRows": 2,
+      "totalUnremarkedRows": 3,
+      "overallProgress": 40
+    },
+    "appliedFilters": {}
+  }
+}
+
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStatus=remarked&pageSize=10
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "fileName": "test_disposition_http.csv",
+      "totalCount": 10,
+      "successCount": 5,
+      "failedCount": 5,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780745578105,
+      "createdBy": "operator_li",
+      "completedAt": 1780745578114,
+      "idempotencyKey": null,
+      "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 5,
+        "remarkedRows": 2,
+        "unremarkedRows": 3
+      }
+    },
+    "dispositionStats": {
+      "totalFailedRows": 5,
+      "remarkedRows": 2,
+      "unremarkedRows": 3,
+      "byHandler": [
+        {
+          "handledBy": "manager_zhang",
+          "count": 1
+        },
+        {
+          "handledBy": "admin",
+          "count": 1
+        }
+      ],
+      "remarkProgress": 40
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-9115ea91-1c3b-4d10-a957-25eb1580e54f",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 4,
+          "deviceId": "UNKNOWN-DISPO-001",
+          "temperature": -19,
+          "readingTime": 1780279380000,
+          "status": "failed",
+          "errorMessage": "第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-069c2e8d-a772-458c-83fe-eb23229eff03",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 4,
+            "remarkContent": "设备不存在，已通知门店补充设备台账",
+            "handledBy": "admin",
+            "handledAt": 1780745578418,
+            "createdAt": 1780745578418,
+            "updatedAt": 1780745578418
+          }
+        },
+        {
+          "id": "row-8d7e8d18-cdd8-46cd-b487-a0052e5db127",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 5,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279440000,
+          "status": "failed",
+          "errorMessage": "第5行：温度\"NOT_A_NUMBER\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": {
+            "id": "remark-f537635f-a518-4f6e-97bf-5c2c58a159b9",
+            "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+            "rowIndex": 5,
+            "remarkContent": "deviceId为空，已联系供应商确认数据格式",
+            "handledBy": "manager_zhang",
+            "handledAt": 1780745578692,
+            "createdAt": 1780745578692,
+            "updatedAt": 1780745578692
+          }
+        }
+      ],
+      "total": 2,
+      "page": 1,
+      "pageSize": 10
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-5725acd6-bd9a-4eb2-86d1-d458411092c6",
+        "operationType": "batch_row_remark_clear",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "清空批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注，原备注: 温度格式错误，已反馈数据采集团队，已修复采集程序",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578857
+      },
+      {
+        "id": "audit-ab30df09-2bcd-4993-b7db-a574da8b48ac",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "更新批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队，已修复采集程序",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578836
+      },
+      {
+        "id": "audit-9ebfad36-d412-4d4c-810f-f50be4055120",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"5\"的异常处置备注: deviceId为空，已联系供应商确认数据格式",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578695
+      },
+      {
+        "id": "audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"4\"的异常处置备注: 设备不存在，已通知门店补充设备台账",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578421
+      },
+      {
+        "id": "audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578163
+      },
+      {
+        "id": "audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3",
+        "operationType": "reading_import",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_disposition_http.csv\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578114
+      }
+    ],
+    "appliedFilters": {
+      "remarkStatus": "remarked"
+    }
+  }
+}
+
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStatus=unremarked&pageSize=10
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+      "fileName": "test_disposition_http.csv",
+      "totalCount": 10,
+      "successCount": 5,
+      "failedCount": 5,
+      "errorDetails": "第2行：温度\"INVALID_TEMP\"不是有效数字; 第4行：设备\"UNKNOWN-DISPO-001\"不存在，请到设备台账中添加; 第5行：温度\"NOT_A_NUMBER\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\"BAD_VALUE\"不是有效数字",
+      "status": "completed",
+      "createdAt": 1780745578105,
+      "createdBy": "operator_li",
+      "completedAt": 1780745578114,
+      "idempotencyKey": null,
+      "fileContentHash": "eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f",
+      "isIdempotencyHit": false,
+      "originalBatchId": null,
+      "submitCount": 1,
+      "remarkStats": {
+        "totalFailedRows": 5,
+        "remarkedRows": 2,
+        "unremarkedRows": 3
+      }
+    },
+    "dispositionStats": {
+      "totalFailedRows": 5,
+      "remarkedRows": 2,
+      "unremarkedRows": 3,
+      "byHandler": [
+        {
+          "handledBy": "manager_zhang",
+          "count": 1
+        },
+        {
+          "handledBy": "admin",
+          "count": 1
+        }
+      ],
+      "remarkProgress": 40
+    },
+    "rowResults": {
+      "items": [
+        {
+          "id": "row-726f2356-4b08-4476-b3f3-dc6a30621022",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 2,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279260000,
+          "status": "failed",
+          "errorMessage": "第2行：温度\"INVALID_TEMP\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": null
+        },
+        {
+          "id": "row-8a8c00f5-56d3-47c7-a9b7-50440026b3d8",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 7,
+          "deviceId": "",
+          "temperature": -19.5,
+          "readingTime": 1780279560000,
+          "status": "failed",
+          "errorMessage": "第7行：设备ID不能为空",
+          "createdAt": 1780745578113,
+          "remark": null
+        },
+        {
+          "id": "row-e96b81cc-ce05-4ba2-bbf4-f33a33381b26",
+          "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+          "rowIndex": 9,
+          "deviceId": "DEVDISPO001",
+          "temperature": null,
+          "readingTime": 1780279680000,
+          "status": "failed",
+          "errorMessage": "第9行：温度\"BAD_VALUE\"不是有效数字",
+          "createdAt": 1780745578113,
+          "remark": null
+        }
+      ],
+      "total": 3,
+      "page": 1,
+      "pageSize": 10
+    },
+    "alarms": [],
+    "auditLogs": [
+      {
+        "id": "audit-5725acd6-bd9a-4eb2-86d1-d458411092c6",
+        "operationType": "batch_row_remark_clear",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "清空批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注，原备注: 温度格式错误，已反馈数据采集团队，已修复采集程序",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578857
+      },
+      {
+        "id": "audit-ab30df09-2bcd-4993-b7db-a574da8b48ac",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "更新批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队，已修复采集程序",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578836
+      },
+      {
+        "id": "audit-9ebfad36-d412-4d4c-810f-f50be4055120",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"5\"的异常处置备注: deviceId为空，已联系供应商确认数据格式",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578695
+      },
+      {
+        "id": "audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4",
+        "entityType": "batch_row_remark",
+        "operator": "admin",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"4\"的异常处置备注: 设备不存在，已通知门店补充设备台账",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578421
+      },
+      {
+        "id": "audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0",
+        "operationType": "batch_row_remark_update",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2",
+        "entityType": "batch_row_remark",
+        "operator": "manager_zhang",
+        "details": "新增批次\"batch-f79c1168-bbc3-410c-adca-a57db9811261\"行号\"2\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578163
+      },
+      {
+        "id": "audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3",
+        "operationType": "reading_import",
+        "entityId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "entityType": "import_batch",
+        "operator": "operator_li",
+        "details": "导入CSV文件\"test_disposition_http.csv\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条",
+        "storeId": null,
+        "deviceId": null,
+        "importBatchId": "batch-f79c1168-bbc3-410c-adca-a57db9811261",
+        "alarmId": null,
+        "createdAt": 1780745578114
+      }
+    ],
+    "appliedFilters": {
+      "remarkStatus": "unremarked"
+    }
+  }
+}
+
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261/export?format=json&rowStatus=failed&remarkStatus=remarked
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+----------------------------------------------------------------------
+"{\n  \"batch\": {\n    \"id\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n    \"fileName\": \"test_disposition_http.csv\",\n    \"status\": \"completed\",\n    \"createdBy\": \"operator_li\",\n    \"createdAt\": 1780745578105,\n    \"completedAt\": 1780745578114,\n    \"totalCount\": 10,\n    \"successCount\": 5,\n    \"failedCount\": 5,\n    \"errorDetails\": \"第2行：温度\\\"INVALID_TEMP\\\"不是有效数字; 第4行：设备\\\"UNKNOWN-DISPO-001\\\"不存在，请到设备台账中添加; 第5行：温度\\\"NOT_A_NUMBER\\\"不是有效数字; 第7行：设备ID不能为空; 第9行：温度\\\"BAD_VALUE\\\"不是有效数字\",\n    \"idempotencyKey\": null,\n    \"fileContentHash\": \"eb3eeee555b66a0813dfd3d21b3a5b55717ca70fca4b5f2cdb8b8b3aa3d4683f\",\n    \"isIdempotencyHit\": false,\n    \"originalBatchId\": null,\n    \"submitCount\": 1,\n    \"remarkStats\": {\n      \"totalFailedRows\": 5,\n      \"remarkedRows\": 2,\n      \"unremarkedRows\": 3\n    },\n    \"dispositionStats\": {\n      \"totalFailedRows\": 5,\n      \"remarkedRows\": 2,\n      \"unremarkedRows\": 3,\n      \"byHandler\": [\n        {\n          \"handledBy\": \"manager_zhang\",\n          \"count\": 1\n        },\n        {\n          \"handledBy\": \"admin\",\n          \"count\": 1\n        }\n      ],\n      \"remarkProgress\": 40\n    }\n  },\n  \"dispositionStats\": {\n    \"totalFailedRows\": 5,\n    \"remarkedRows\": 2,\n    \"unremarkedRows\": 3,\n    \"byHandler\": [\n      {\n        \"handledBy\": \"manager_zhang\",\n        \"count\": 1\n      },\n      {\n        \"handledBy\": \"admin\",\n        \"count\": 1\n      }\n    ],\n    \"remarkProgress\": 40\n  },\n  \"rowResults\": [\n    {\n      \"rowIndex\": 4,\n      \"deviceId\": \"UNKNOWN-DISPO-001\",\n      \"temperature\": -19,\n      \"readingTime\": 1780279380000,\n      \"status\": \"failed\",\n      \"errorMessage\": \"第4行：设备\\\"UNKNOWN-DISPO-001\\\"不存在，请到设备台账中添加\",\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"id\": \"row-9115ea91-1c3b-4d10-a957-25eb1580e54f\",\n      \"createdAt\": 1780745578113,\n      \"remark\": {\n        \"remarkContent\": \"设备不存在，已通知门店补充设备台账\",\n        \"handledBy\": \"admin\",\n        \"handledAt\": 1780745578418,\n        \"createdAt\": 1780745578418,\n        \"updatedAt\": 1780745578418\n      }\n    },\n    {\n      \"rowIndex\": 5,\n      \"deviceId\": \"DEVDISPO001\",\n      \"temperature\": null,\n      \"readingTime\": 1780279440000,\n      \"status\": \"failed\",\n      \"errorMessage\": \"第5行：温度\\\"NOT_A_NUMBER\\\"不是有效数字\",\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"id\": \"row-8d7e8d18-cdd8-46cd-b487-a0052e5db127\",\n      \"createdAt\": 1780745578113,\n      \"remark\": {\n        \"remarkContent\": \"deviceId为空，已联系供应商确认数据格式\",\n        \"handledBy\": \"manager_zhang\",\n        \"handledAt\": 1780745578692,\n        \"createdAt\": 1780745578692,\n        \"updatedAt\": 1780745578692\n      }\n    }\n  ],\n  \"alarms\": [],\n  \"auditLogs\": [\n    {\n      \"operationType\": \"batch_row_remark_clear\",\n      \"operator\": \"admin\",\n      \"details\": \"清空批次\\\"batch-f79c1168-bbc3-410c-adca-a57db9811261\\\"行号\\\"2\\\"的异常处置备注，原备注: 温度格式错误，已反馈数据采集团队，已修复采集程序\",\n      \"createdAt\": 1780745578857,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2\",\n      \"entityType\": \"batch_row_remark\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-5725acd6-bd9a-4eb2-86d1-d458411092c6\"\n    },\n    {\n      \"operationType\": \"batch_row_remark_update\",\n      \"operator\": \"admin\",\n      \"details\": \"更新批次\\\"batch-f79c1168-bbc3-410c-adca-a57db9811261\\\"行号\\\"2\\\"的异常处置备注: 温度格式错误，已反馈数据采集团队，已修复采集程序\",\n      \"createdAt\": 1780745578836,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2\",\n      \"entityType\": \"batch_row_remark\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-ab30df09-2bcd-4993-b7db-a574da8b48ac\"\n    },\n    {\n      \"operationType\": \"batch_row_remark_update\",\n      \"operator\": \"manager_zhang\",\n      \"details\": \"新增批次\\\"batch-f79c1168-bbc3-410c-adca-a57db9811261\\\"行号\\\"5\\\"的异常处置备注: deviceId为空，已联系供应商确认数据格式\",\n      \"createdAt\": 1780745578695,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261-row-5\",\n      \"entityType\": \"batch_row_remark\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-9ebfad36-d412-4d4c-810f-f50be4055120\"\n    },\n    {\n      \"operationType\": \"batch_row_remark_update\",\n      \"operator\": \"admin\",\n      \"details\": \"新增批次\\\"batch-f79c1168-bbc3-410c-adca-a57db9811261\\\"行号\\\"4\\\"的异常处置备注: 设备不存在，已通知门店补充设备台账\",\n      \"createdAt\": 1780745578421,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261-row-4\",\n      \"entityType\": \"batch_row_remark\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-bf0f1f6e-a2ab-4fcb-8354-8ff64ec130fa\"\n    },\n    {\n      \"operationType\": \"batch_row_remark_update\",\n      \"operator\": \"manager_zhang\",\n      \"details\": \"新增批次\\\"batch-f79c1168-bbc3-410c-adca-a57db9811261\\\"行号\\\"2\\\"的异常处置备注: 温度格式错误，已反馈数据采集团队排查\",\n      \"createdAt\": 1780745578163,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261-row-2\",\n      \"entityType\": \"batch_row_remark\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-8a2b4c80-b469-4ac4-81a1-3f515b3f98f0\"\n    },\n    {\n      \"operationType\": \"reading_import\",\n      \"operator\": \"operator_li\",\n      \"details\": \"导入CSV文件\\\"test_disposition_http.csv\\\"，共10条，成功5条，失败5条，生成告警0条，恢复告警0条\",\n      \"createdAt\": 1780745578114,\n      \"entityId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"entityType\": \"import_batch\",\n      \"storeId\": null,\n      \"deviceId\": null,\n      \"importBatchId\": \"batch-f79c1168-bbc3-410c-adca-a57db9811261\",\n      \"alarmId\": null,\n      \"id\": \"audit-774fefbe-27ae-4ddf-8eb1-14552d4ae3b3\"\n    }\n  ],\n  \"filters\": {\n    \"rowStatus\": \"failed\",\n    \"remarkStatus\": \"remarked\"\n  }\n}"
+
+
+----------------------------------------------------------------------
+>>> PUT http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261/rows/2/remark
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "operator_li",
+  "Content-Type": "application/json"
+}
+Body: {
+  "remarkContent": "operator trying after restart"
+}
+
+
+<<< Status: 403
+----------------------------------------------------------------------
+{
+  "success": false,
+  "code": "UNAUTHORIZED",
+  "message": "用户\"operator_li\"没有\"manage_row_remarks\"操作权限，请联系管理员授权"
+}
+
+
+----------------------------------------------------------------------
+>>> GET http://localhost:3007/api/readings/batches/batch-f79c1168-bbc3-410c-adca-a57db9811261?rowStatus=failed&remarkStatus=unremarked&handledBy=admin
+----------------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 400
+----------------------------------------------------------------------
+{
+  "success": false,
+  "message": "remarkStatus: 筛选未备注行时不能同时指定处理人或处理时间范围",
+  "errors": [
+    "remarkStatus: 筛选未备注行时不能同时指定处理人或处理时间范围"
+  ]
+}

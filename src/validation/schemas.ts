@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { DeviceStatus, AlarmStatus, BatchStatus, RowStatus } from '../types';
+import { DeviceStatus, AlarmStatus, BatchStatus, RowStatus, RemarkStatus } from '../types';
+import { getTestUsers } from '../domain/rules/authRules';
 
 export const createDeviceSchema = z.object({
   id: z.string().min(1, '设备ID不能为空'),
@@ -97,7 +98,47 @@ export const dryRunCsvSchema = z.object({
   operator: z.string().min(1, '操作人不能为空'),
 });
 
-export const batchDetailSchema = z.object({
+const VALID_HANDLERS = getTestUsers().map(u => u.id);
+
+const remarkFiltersBaseSchema = z.object({
+  remarkStatus: z.enum([
+    RemarkStatus.REMARKED,
+    RemarkStatus.UNREMARKED,
+  ]).optional(),
+  handledBy: z.string().optional().refine(
+    (val) => !val || VALID_HANDLERS.includes(val),
+    { message: `处理人必须是已知用户: ${VALID_HANDLERS.join(', ')}` }
+  ),
+  remarkStartTime: z.coerce.number().optional().refine(
+    (val) => val === undefined || val === null || (val > 946656000000 && val < 4102444800000),
+    { message: 'remarkStartTime 必须是有效的时间戳（毫秒）' }
+  ),
+  remarkEndTime: z.coerce.number().optional().refine(
+    (val) => val === undefined || val === null || (val > 946656000000 && val < 4102444800000),
+    { message: 'remarkEndTime 必须是有效的时间戳（毫秒）' }
+  ),
+});
+
+export const remarkFiltersSchema = remarkFiltersBaseSchema.refine(
+  (data) => {
+    if (data.remarkStartTime !== undefined && data.remarkStartTime !== null && 
+        data.remarkEndTime !== undefined && data.remarkEndTime !== null) {
+      return data.remarkStartTime <= data.remarkEndTime;
+    }
+    return true;
+  },
+  { message: 'remarkStartTime 不能大于 remarkEndTime', path: ['remarkStartTime'] }
+).refine(
+  (data) => {
+    if (data.remarkStatus === 'unremarked' && (data.handledBy || data.remarkStartTime || data.remarkEndTime)) {
+      return false;
+    }
+    return true;
+  },
+  { message: '筛选未备注行时不能同时指定处理人或处理时间范围', path: ['remarkStatus'] }
+);
+
+export const batchDetailSchema = remarkFiltersBaseSchema.extend({
   format: z.enum(['csv', 'json']).optional().default('json'),
   rowStatus: z.enum([
     RowStatus.PENDING,
@@ -108,9 +149,26 @@ export const batchDetailSchema = z.object({
   ]).optional().default('all'),
   page: z.coerce.number().int().positive().optional().default(1),
   pageSize: z.coerce.number().int().positive().max(500).optional().default(100),
-});
+}).refine(
+  (data) => {
+    if (data.remarkStartTime !== undefined && data.remarkStartTime !== null && 
+        data.remarkEndTime !== undefined && data.remarkEndTime !== null) {
+      return data.remarkStartTime <= data.remarkEndTime;
+    }
+    return true;
+  },
+  { message: 'remarkStartTime 不能大于 remarkEndTime', path: ['remarkStartTime'] }
+).refine(
+  (data) => {
+    if (data.remarkStatus === 'unremarked' && (data.handledBy || data.remarkStartTime || data.remarkEndTime)) {
+      return false;
+    }
+    return true;
+  },
+  { message: '筛选未备注行时不能同时指定处理人或处理时间范围', path: ['remarkStatus'] }
+);
 
-export const batchQueryFiltersSchema = queryFiltersSchema.extend({
+export const batchQueryFiltersSchema = queryFiltersSchema.merge(remarkFiltersBaseSchema).extend({
   batchStatus: z.enum([
     BatchStatus.PENDING,
     BatchStatus.PROCESSING,
@@ -124,7 +182,24 @@ export const batchQueryFiltersSchema = queryFiltersSchema.extend({
     RowStatus.FAILED,
     RowStatus.SKIPPED,
   ]).optional(),
-});
+}).refine(
+  (data) => {
+    if (data.remarkStartTime !== undefined && data.remarkStartTime !== null && 
+        data.remarkEndTime !== undefined && data.remarkEndTime !== null) {
+      return data.remarkStartTime <= data.remarkEndTime;
+    }
+    return true;
+  },
+  { message: 'remarkStartTime 不能大于 remarkEndTime', path: ['remarkStartTime'] }
+).refine(
+  (data) => {
+    if (data.remarkStatus === 'unremarked' && (data.handledBy || data.remarkStartTime || data.remarkEndTime)) {
+      return false;
+    }
+    return true;
+  },
+  { message: '筛选未备注行时不能同时指定处理人或处理时间范围', path: ['remarkStatus'] }
+);
 
 export const upsertRemarkSchema = z.object({
   remarkContent: z.string().max(1000, '备注内容不能超过1000字符'),
@@ -151,3 +226,4 @@ export type BatchQueryFiltersInput = z.infer<typeof batchQueryFiltersSchema>;
 export type BatchDetailFiltersInput = z.infer<typeof batchDetailSchema>;
 export type UpsertRemarkInput = z.infer<typeof upsertRemarkSchema>;
 export type RemarkRowParamInput = z.infer<typeof remarkRowParamSchema>;
+export type RemarkFiltersInput = z.infer<typeof remarkFiltersSchema>;

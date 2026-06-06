@@ -101,23 +101,16 @@ router.get(
   async (req: Request, res: Response<ApiResponse>, next: NextFunction) => {
     try {
       const services = ServiceContainer.getInstanceSync();
-      const { importBatchRepo, batchRowRemarkRepo } = services;
+      const { readingImportService } = services;
       const operator = (req.headers['x-user-id'] as string) || 'admin';
-      checkViewBatchesPermission(operator);
-      const result = importBatchRepo.findAll(req.query as any);
-
-      const itemsWithRemarkStats = result.items.map(batch => {
-        const dataBatchId = (batch as any).originalBatchId || batch.id;
-        const remarkStats = batchRowRemarkRepo.getRemarkStatsForBatch(dataBatchId);
-        return { ...batch, remarkStats };
-      });
+      const result = readingImportService.getBatchListWithDisposition(
+        operator,
+        req.query as any
+      );
 
       res.json({
         success: true,
-        data: {
-          ...result,
-          items: itemsWithRemarkStats,
-        },
+        data: result,
       });
     } catch (error) {
       next(error);
@@ -197,6 +190,10 @@ router.get(
         rowStatus: queryParams.rowStatus,
         page: queryParams.page,
         pageSize: queryParams.pageSize,
+        remarkStatus: queryParams.remarkStatus,
+        handledBy: queryParams.handledBy,
+        remarkStartTime: queryParams.remarkStartTime,
+        remarkEndTime: queryParams.remarkEndTime,
       };
 
       const { content, contentType, filename } = readingImportService.exportBatchDetail(
@@ -230,6 +227,10 @@ router.get(
         rowStatus: queryParams.rowStatus,
         page: queryParams.page,
         pageSize: queryParams.pageSize,
+        remarkStatus: queryParams.remarkStatus,
+        handledBy: queryParams.handledBy,
+        remarkStartTime: queryParams.remarkStartTime,
+        remarkEndTime: queryParams.remarkEndTime,
       };
 
       if (format === 'csv') {

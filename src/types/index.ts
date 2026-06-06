@@ -131,7 +131,41 @@ export interface ApiResponse<T = any> {
   errors?: string[];
 }
 
-export interface QueryFilters {
+export const RemarkStatus = {
+  REMARKED: 'remarked',
+  UNREMARKED: 'unremarked',
+} as const;
+
+export type RemarkStatus = typeof RemarkStatus[keyof typeof RemarkStatus];
+
+export interface RemarkFilters {
+  remarkStatus?: RemarkStatus;
+  handledBy?: string;
+  remarkStartTime?: number;
+  remarkEndTime?: number;
+}
+
+export interface DispositionStats {
+  totalFailedRows: number;
+  remarkedRows: number;
+  unremarkedRows: number;
+  byHandler: Array<{
+    handledBy: string;
+    count: number;
+  }>;
+  remarkProgress: number;
+}
+
+export interface BatchListDispositionStats {
+  totalBatches: number;
+  batchesWithUnremarkedRows: number;
+  totalFailedRows: number;
+  totalRemarkedRows: number;
+  totalUnremarkedRows: number;
+  overallProgress: number;
+}
+
+export interface QueryFilters extends RemarkFilters {
   storeId?: string;
   deviceId?: string;
   alarmStatus?: AlarmStatus;
@@ -268,7 +302,7 @@ export interface PaginatedBatchDetail {
   auditLogs: AuditLog[];
 }
 
-export interface BatchDetailFilters {
+export interface BatchDetailFilters extends RemarkFilters {
   rowStatus?: RowStatus | 'all';
   page?: number;
   pageSize?: number;
@@ -297,22 +331,39 @@ export interface BatchRowRemarkStats {
   unremarkedRows: number;
 }
 
+export interface BatchRowRemarkWithDispositionStats extends BatchRowRemarkStats {
+  dispositionStats: DispositionStats;
+}
+
 export interface BatchRowResultWithRemark extends BatchRowResult {
   remark?: BatchRowRemark | null;
 }
 
 export interface BatchDetailWithRemarks {
   batch: ImportBatch & { remarkStats: BatchRowRemarkStats };
+  dispositionStats: DispositionStats;
   rowResults: PaginatedResult<BatchRowResultWithRemark>;
   alarms: Alarm[];
   auditLogs: AuditLog[];
+  appliedFilters: RemarkFilters;
 }
 
 export interface BatchDetailAllRowsWithRemarks {
   batch: ImportBatch & { remarkStats: BatchRowRemarkStats };
+  dispositionStats: DispositionStats;
   rowResults: BatchRowResultWithRemark[];
   alarms: Alarm[];
   auditLogs: AuditLog[];
+  appliedFilters: RemarkFilters;
+}
+
+export interface PaginatedBatchListWithDisposition {
+  items: Array<ImportBatch & { remarkStats: BatchRowRemarkStats; dispositionStats: DispositionStats }>;
+  total: number;
+  page: number;
+  pageSize: number;
+  summary: BatchListDispositionStats;
+  appliedFilters: RemarkFilters;
 }
 
 export interface UpsertRemarkInput {
