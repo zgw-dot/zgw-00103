@@ -62,8 +62,10 @@ export interface ImportBatch {
   successCount: number;
   failedCount: number;
   errorDetails: string;
+  status: BatchStatus;
   createdAt: number;
   createdBy: string;
+  completedAt?: number;
 }
 
 export interface Alarm {
@@ -117,6 +119,8 @@ export interface QueryFilters {
   endTime?: number;
   page?: number;
   pageSize?: number;
+  batchStatus?: BatchStatus;
+  rowStatus?: RowStatus;
 }
 
 export interface PaginatedResult<T> {
@@ -126,6 +130,83 @@ export interface PaginatedResult<T> {
   pageSize: number;
 }
 
+export enum BatchStatus {
+  PENDING = 'pending',
+  PROCESSING = 'processing',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  ROLLED_BACK = 'rolled_back',
+}
+
+export enum RowStatus {
+  PENDING = 'pending',
+  SUCCESS = 'success',
+  FAILED = 'failed',
+  SKIPPED = 'skipped',
+}
+
+export interface DryRunResult {
+  fileName: string;
+  totalCount: number;
+  validCount: number;
+  invalidCount: number;
+  newReadings: Array<{
+    deviceId: string;
+    temperature: number;
+    readingTime: number;
+    rowIndex: number;
+  }>;
+  triggeredAlarms: Array<{
+    deviceId: string;
+    type: AlarmType;
+    threshold: number;
+    temperature: number;
+    readingTime: number;
+    rowIndex: number;
+  }>;
+  recoveredAlarms: Array<{
+    alarmId: string;
+    deviceId: string;
+    type: AlarmType;
+    originalTemperature: number;
+    recoveredTemperature: number;
+    recoveredReadingTime: number;
+    rowIndex: number;
+  }>;
+  unknownDevices: Array<{
+    deviceId: string;
+    rowIndex: number;
+  }>;
+  inactiveDevices: Array<{
+    deviceId: string;
+    rowIndex: number;
+  }>;
+  duplicateTimes: Array<{
+    deviceId: string;
+    readingTime: number;
+    rowIndex: number;
+  }>;
+  outOfOrderTimes: Array<{
+    deviceId: string;
+    currentTime: number;
+    previousTime: number;
+    rowIndex: number;
+  }>;
+  thresholdConflicts: Array<{
+    deviceId: string;
+    temperature: number;
+    readingTime: number;
+    minTemp: number;
+    maxTemp: number;
+    violationType: 'above_max' | 'below_min';
+    rowIndex: number;
+  }>;
+  rowErrors: Array<{
+    rowIndex: number;
+    error: string;
+  }>;
+}
+
 export interface ImportResult {
   batchId: string;
   successCount: number;
@@ -133,6 +214,26 @@ export interface ImportResult {
   errors: string[];
   generatedAlarms: number;
   recoveredAlarms: number;
+  status: BatchStatus;
+}
+
+export interface BatchRowResult {
+  id?: string;
+  importBatchId: string;
+  rowIndex: number;
+  deviceId: string;
+  temperature?: number;
+  readingTime?: number;
+  status: RowStatus;
+  errorMessage?: string;
+  createdAt?: number;
+}
+
+export interface BatchDetail {
+  batch: ImportBatch;
+  rowResults: BatchRowResult[];
+  alarms: Alarm[];
+  auditLogs: AuditLog[];
 }
 
 export interface CsvReadingRow {

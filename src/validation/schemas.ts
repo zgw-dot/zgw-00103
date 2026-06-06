@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DeviceStatus, AlarmStatus } from '../types';
+import { DeviceStatus, AlarmStatus, BatchStatus, RowStatus } from '../types';
 
 export const createDeviceSchema = z.object({
   id: z.string().min(1, '设备ID不能为空'),
@@ -18,6 +18,10 @@ export const updateDeviceSchema = z.object({
 
 export const deviceIdSchema = z.object({
   id: z.string().min(1, '设备ID不能为空'),
+});
+
+export const deviceIdParamSchema = z.object({
+  deviceId: z.string().min(1, '设备ID不能为空'),
 });
 
 const thresholdBaseSchema = z.object({
@@ -88,6 +92,30 @@ export const readingRowSchema = z.object({
   readingTime: z.string().min(1, '读数时间不能为空'),
 });
 
+export const dryRunCsvSchema = z.object({
+  operator: z.string().min(1, '操作人不能为空'),
+});
+
+export const batchDetailSchema = z.object({
+  format: z.enum(['csv', 'json']).optional().default('json'),
+});
+
+export const batchQueryFiltersSchema = queryFiltersSchema.extend({
+  batchStatus: z.enum([
+    BatchStatus.PENDING,
+    BatchStatus.PROCESSING,
+    BatchStatus.COMPLETED,
+    BatchStatus.FAILED,
+    BatchStatus.ROLLED_BACK,
+  ]).optional(),
+  rowStatus: z.enum([
+    RowStatus.PENDING,
+    RowStatus.SUCCESS,
+    RowStatus.FAILED,
+    RowStatus.SKIPPED,
+  ]).optional(),
+});
+
 export type CreateDeviceInput = z.infer<typeof createDeviceSchema>;
 export type UpdateDeviceInput = z.infer<typeof updateDeviceSchema>;
 export type ThresholdInput = z.infer<typeof thresholdSchema>;
@@ -98,3 +126,6 @@ export type CloseAlarmInput = z.infer<typeof closeAlarmSchema>;
 export type QueryFiltersInput = z.infer<typeof queryFiltersSchema>;
 export type ExportInput = z.infer<typeof exportSchema>;
 export type ImportCsvInput = z.infer<typeof importCsvSchema>;
+export type DryRunCsvInput = z.infer<typeof dryRunCsvSchema>;
+export type BatchDetailInput = z.infer<typeof batchDetailSchema>;
+export type BatchQueryFiltersInput = z.infer<typeof batchQueryFiltersSchema>;

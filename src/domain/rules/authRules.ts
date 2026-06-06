@@ -1,10 +1,10 @@
 import { UnauthorizedError } from '../../utils/errors';
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['alarm_acknowledge', 'alarm_close', 'device_manage', 'threshold_manage', 'import_readings', 'export_audit'],
-  manager: ['alarm_acknowledge', 'alarm_close', 'import_readings', 'export_audit'],
-  operator: ['import_readings', 'export_audit'],
-  viewer: ['export_audit'],
+  admin: ['alarm_acknowledge', 'alarm_close', 'device_manage', 'threshold_manage', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches'],
+  manager: ['alarm_acknowledge', 'alarm_close', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches'],
+  operator: ['import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches'],
+  viewer: ['export_audit', 'view_batches', 'export_batches'],
 };
 
 const USER_ROLES: Record<string, string[]> = {
@@ -62,6 +62,18 @@ export function checkDeviceManagePermission(userId: string): void {
 
 export function checkThresholdManagePermission(userId: string): void {
   checkPermission(userId, 'threshold_manage');
+}
+
+export function checkDryRunPermission(userId: string): void {
+  checkPermission(userId, 'dry_run_import');
+}
+
+export function checkViewBatchesPermission(userId: string): void {
+  checkPermission(userId, 'view_batches');
+}
+
+export function checkExportBatchesPermission(userId: string): void {
+  checkPermission(userId, 'export_batches');
 }
 
 export function getAllRoles(): string[] {

@@ -75,8 +75,23 @@ function initializeTables(db: Database): void {
       success_count INTEGER NOT NULL DEFAULT 0,
       failed_count INTEGER NOT NULL DEFAULT 0,
       error_details TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
       created_at INTEGER NOT NULL,
-      created_by TEXT NOT NULL
+      created_by TEXT NOT NULL,
+      completed_at INTEGER
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS batch_row_results (
+      id TEXT PRIMARY KEY,
+      import_batch_id TEXT NOT NULL,
+      row_index INTEGER NOT NULL,
+      device_id TEXT NOT NULL,
+      temperature REAL,
+      reading_time INTEGER,
+      status TEXT NOT NULL DEFAULT 'pending',
+      error_message TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (import_batch_id) REFERENCES import_batches(id) ON DELETE CASCADE
     )`,
 
     `CREATE TABLE IF NOT EXISTS temperature_readings (
@@ -127,6 +142,8 @@ function initializeTables(db: Database): void {
     `CREATE INDEX IF NOT EXISTS idx_alarms_device_status ON alarms(device_id, status)`,
     `CREATE INDEX IF NOT EXISTS idx_alarms_reading_time ON alarms(reading_time)`,
     `CREATE INDEX IF NOT EXISTS idx_readings_device_time ON temperature_readings(device_id, reading_time)`,
+    `CREATE INDEX IF NOT EXISTS idx_batch_row_results_batch ON batch_row_results(import_batch_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_batch_row_results_device ON batch_row_results(device_id)`,
     `CREATE INDEX IF NOT EXISTS idx_audit_device ON audit_logs(device_id)`,
     `CREATE INDEX IF NOT EXISTS idx_audit_store ON audit_logs(store_id)`,
     `CREATE INDEX IF NOT EXISTS idx_audit_batch ON audit_logs(import_batch_id)`,
@@ -158,6 +175,10 @@ function insertDefaultThreshold(db: Database): void {
 
 export function saveDatabase(): void {
   if (!db) return;
+  
+  if (isInTransaction) {
+    return;
+  }
 
   const data = db.export();
   const buffer = Buffer.from(data);
@@ -177,16 +198,31 @@ export function closeDatabase(): void {
   }
 }
 
+let isInTransaction = false;
+
 export function runInTransaction(fn: () => void): void {
   if (!db) throw new Error('Database not initialized');
+  
+  if (isInTransaction) {
+    fn();
+    return;
+  }
+  
+  isInTransaction = true;
   db.run('BEGIN TRANSACTION');
   try {
     fn();
     db.run('COMMIT');
     saveDatabase();
   } catch (error) {
-    db.run('ROLLBACK');
+    try {
+      db.run('ROLLBACK');
+    } catch (rollbackError) {
+      logger.warn('Rollback failed, transaction may already be closed', rollbackError);
+    }
     throw error;
+  } finally {
+    isInTransaction = false;
   }
 }
 

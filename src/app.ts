@@ -63,7 +63,11 @@ async function startServer() {
       logger.info('  CRUD /api/devices');
       logger.info('  CRUD /api/thresholds');
       logger.info('  CRUD /api/alarms');
+      logger.info('  POST /api/readings/dry-run');
       logger.info('  POST /api/readings/import');
+      logger.info('  GET  /api/readings/batches');
+      logger.info('  GET  /api/readings/batches/:id');
+      logger.info('  GET  /api/readings/batches/:id/export');
       logger.info('  GET  /api/readings');
       logger.info('  GET  /api/audit/logs');
       logger.info('  GET  /api/audit/export');

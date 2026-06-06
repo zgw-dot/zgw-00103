@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { ServiceContainer } from '../domain/services';
-import { validateBody, validateParams, thresholdSchema, storeThresholdSchema, deviceThresholdSchema, deviceIdSchema } from '../validation';
+import { validateBody, validateParams, thresholdSchema, storeThresholdSchema, deviceThresholdSchema, deviceIdSchema, deviceIdParamSchema } from '../validation';
 import { ApiResponse } from '../types';
 
 const router = Router();
@@ -91,7 +91,7 @@ router.delete(
 
 router.get(
   '/device/:deviceId',
-  validateParams(deviceIdSchema),
+  validateParams(deviceIdParamSchema),
   async (req: Request, res: Response<ApiResponse>, next: NextFunction) => {
     try {
       const services = ServiceContainer.getInstanceSync();
@@ -106,7 +106,7 @@ router.get(
 
 router.get(
   '/device/:deviceId/effective',
-  validateParams(deviceIdSchema),
+  validateParams(deviceIdParamSchema),
   async (req: Request, res: Response<ApiResponse>, next: NextFunction) => {
     try {
       const services = ServiceContainer.getInstanceSync();
@@ -121,7 +121,7 @@ router.get(
 
 router.put(
   '/device/:deviceId',
-  validateParams(deviceIdSchema),
+  validateParams(deviceIdParamSchema),
   validateBody(thresholdSchema),
   async (req: Request, res: Response<ApiResponse>, next: NextFunction) => {
     try {
@@ -143,7 +143,7 @@ router.put(
 
 router.delete(
   '/device/:deviceId',
-  validateParams(deviceIdSchema),
+  validateParams(deviceIdParamSchema),
   async (req: Request, res: Response<ApiResponse>, next: NextFunction) => {
     try {
       const services = ServiceContainer.getInstanceSync();

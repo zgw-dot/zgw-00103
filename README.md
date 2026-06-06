@@ -28,11 +28,12 @@ src/
 │       ├── ServiceContainer.ts
 │       └── index.ts
 ├── storage/                # 存储层 - 数据持久化
-│   ├── database.ts         # SQLite数据库初始化
+│   ├── database.ts         # SQLite数据库初始化（含事务管理）
 │   └── repositories/       # 数据访问层
 │       ├── DeviceRepository.ts
 │       ├── ThresholdRepository.ts
-│       ├── ImportBatchRepository.ts
+│       ├── ImportBatchRepository.ts    # 批次管理（增强版）
+│       ├── BatchRowResultRepository.ts # 新增：逐行结果存储
 │       ├── ReadingRepository.ts
 │       ├── AlarmRepository.ts
 │       ├── AuditRepository.ts
@@ -145,6 +146,23 @@ FREEZER-001,-22.5,2024-01-15 08:00:00
 - ❌ 无效温度 → 返回"温度不是有效数字"
 - ❌ 无效时间 → 返回"时间格式无效"
 
+### 3.1 Dry-Run 预检
+
+**在正式导入前进行预检，不写入数据库**：
+
+预检会返回完整的分析报告：
+- ✅ 会新增的读数
+- ⚠️ 会触发的告警
+- ✅ 会恢复的告警
+- ❌ 未知设备
+- ❌ 停用设备
+- ❌ 重复时间读数
+- ❌ 倒序时间读数
+- ⚠️ 阈值冲突
+- ❌ 逐行错误详情
+
+**预检和正式导入使用同一套校验规则，确保结果一致**。
+
 ### 4. 告警管理
 
 **告警状态流转**：
@@ -160,16 +178,56 @@ open → acknowledged → recovered → closed
 - `low_temp`: 温度低于阈值下限
 
 **操作权限控制**：
-- `admin`: 全部权限
-- `manager_zhang`: 告警确认/关闭、导入、导出
-- `operator_li`: 导入、导出
-- `viewer_wang`: 仅导出
+
+| 角色 | 权限 |
+|------|------|
+| `admin` | 全部权限（设备管理、阈值配置、告警确认/关闭、预检、导入、导出、查看批次） |
+| `manager_zhang` | 告警确认/关闭、预检、导入、导出、查看批次 |
+| `operator_li` | 预检、导入、导出、查看批次 |
+| `viewer_wang` | 查看批次、导出（无预检、无导入、无告警确认） |
+
+**权限控制细节**：
+- 👁️ `viewer`: 只能查看批次详情和导出数据
+- 📥 `operator`: 可以进行预检和正式导入
+- 🔧 `manager/admin`: 可以确认和关闭告警
 
 **失败路径拦截**：
 - ❌ 未授权确认 → 403 无权限
 - ❌ 未恢复就关闭 → 409 告警尚未恢复
 - ❌ 重复确认已确认告警 → 409 状态不允许
 - ❌ 关闭已关闭告警 → 409 状态不允许
+
+### 3.2 批次复盘详情
+
+**按导入批次查看完整复盘信息**：
+
+每个导入批次包含完整的详情包括：
+- 📋 批次基本信息（状态、文件名、操作者、时间）
+- 📊 逐行结果（每行的成功/失败状态、错误信息）
+- ⚠️ 关联的告警记录
+- 📝 关联的审计事件
+
+**支持的批次状态：
+- `pending`: 待处理
+- `processing`: 处理中
+- `completed`: 已完成
+- `failed`: 失败
+- `rolled_back`: 已回滚
+
+### 3.3 JSON/CSV 导出
+
+**导出功能特性：
+- 支持 `JSON` 和 `CSV` 两种格式
+- 导出内容与查询结果完全一致
+- viewer 角色可以查看和导出，operator 可以预检和导入，manager/admin 可以确认和关闭告警
+
+### 4. 事务保障
+
+**整批失败不留下任何残留**：
+- 正式导入使用数据库事务
+- 如果导入过程中发生错误，所有读数、告警、审计日志会全部回滚
+- 批次状态标记为 `rolled_back`
+- 不会留下任何部分成功的数据
 
 ### 5. 审计查询与导出
 
@@ -382,6 +440,115 @@ operator: operator_li
 GET /api/readings/batches
 ```
 
+#### Dry-Run 预检
+
+**在正式导入前进行预检，不写入数据库**：
+
+```http
+POST /api/readings/dry-run
+Content-Type: multipart/form-data
+X-User-Id: operator_li
+
+file: @temperature_readings.csv
+operator: operator_li
+```
+
+**响应示例**：
+```json
+{
+  "success": true,
+  "data": {
+    "fileName": "temperature_readings.csv",
+    "totalCount": 8,
+    "validCount": 4,
+    "invalidCount": 4,
+    "newReadings": [
+      {"deviceId": "FREEZER-001", "temperature": -22.5, "readingTime": 1705305600000, "rowIndex": 1}
+    ],
+    "triggeredAlarms": [
+      {"deviceId": "FREEZER-001", "type": "high_temp", "threshold": -15, "temperature": -12, "rowIndex": 3}
+    ],
+    "recoveredAlarms": [],
+    "unknownDevices": [{"deviceId": "UNKNOWN-999", "rowIndex": 2}],
+    "inactiveDevices": [],
+    "duplicateTimes": [],
+    "outOfOrderTimes": [
+      {"deviceId": "FREEZER-001", "currentTime": 1705305600000, "previousTime": 1705309200000, "rowIndex": 4}
+    ],
+    "thresholdConflicts": [
+      {"deviceId": "FREEZER-001", "temperature": -12, "threshold": -15, "violationType": "above_max", "rowIndex": 3}
+    ],
+    "rowErrors": [
+      {"rowIndex": 2, "error": "第2行：设备\"UNKNOWN-999\"不存在，请到设备台账中添加"}
+    ]
+  }
+}
+```
+
+#### 查询导入批次列表
+
+```http
+GET /api/readings/batches?batchStatus=completed&page=1&pageSize=50
+```
+
+**筛选参数**：
+- `batchStatus`: 批次状态 (pending/processing/completed/failed/rolled_back)
+- `startTime`: 开始时间戳
+- `endTime`: 结束时间戳
+
+#### 查询批次详情（复盘）
+
+```http
+GET /api/readings/batches/{batchId}
+X-User-Id: viewer_wang
+```
+
+**响应示例**：
+```json
+{
+  "success": true,
+  "data": {
+    "batch": {
+      "id": "batch-xxxx",
+      "fileName": "temperature_readings.csv",
+      "totalCount": 8,
+      "successCount": 4,
+      "failedCount": 4,
+      "status": "completed",
+      "createdBy": "operator_li",
+      "createdAt": 1705305600000,
+      "completedAt": 1705305610000
+    },
+    "rowResults": [
+      {"rowIndex": 1, "deviceId": "FREEZER-001", "temperature": -22.5, "status": "success", "errorMessage": null},
+      {"rowIndex": 2, "deviceId": "UNKNOWN-999", "status": "failed", "errorMessage": "设备不存在"}
+    ],
+    "alarms": [
+      {"id": "al-xxxx", "deviceId": "FREEZER-001", "type": "high_temp", "status": "open"}
+    ],
+    "auditLogs": [
+      {"operationType": "reading_import", "operator": "operator_li", "details": "导入完成"}
+    ]
+  }
+}
+```
+
+#### 导出批次详情
+
+**导出为 JSON**：
+```http
+GET /api/readings/batches/{batchId}/export?format=json
+X-User-Id: viewer_wang
+```
+
+**导出为 CSV**：
+```http
+GET /api/readings/batches/{batchId}/export?format=csv
+X-User-Id: viewer_wang
+```
+
+> 导出内容与查询结果完全一致。
+
 #### 查询温度读数
 ```http
 GET /api/readings?deviceId=FREEZER-001&importBatchId=batch-xxxx
@@ -415,7 +582,7 @@ GET /api/audit/export?format=csv&storeId=STORE-001
 
 ## 完整业务流程示例
 
-### 场景：从异常到恢复的完整链路
+### 场景1：从异常到恢复的完整链路
 
 **步骤1：创建设备**
 ```bash
@@ -433,30 +600,63 @@ curl -X PUT http://localhost:3000/api/thresholds/device/FREEZER-001 \
   -d '{"minTemp":-25,"maxTemp":-15}'
 ```
 
-**步骤3：导入异常温度数据（产生告警）**
+**步骤3：Dry-Run 预检（可选，推荐在正式导入前执行）**
 ```bash
-curl -X POST http://localhost:3000/api/readings/import \
+curl -X POST http://localhost:3000/api/readings/dry-run \
+  -H "X-User-Id: operator_li" \
   -F "file=@samples/temperature_readings_abnormal.csv" \
   -F "operator=operator_li"
 ```
 
-**步骤4：查看生成的告警**
+> 预检不会写入数据库，可以提前发现问题：未知设备、停用设备、重复时间、倒序时间、阈值冲突等
+
+**步骤4：正式导入异常温度数据（产生告警）**
+```bash
+curl -X POST http://localhost:3000/api/readings/import \
+  -H "X-User-Id: operator_li" \
+  -F "file=@samples/temperature_readings_abnormal.csv" \
+  -F "operator=operator_li"
+```
+
+**步骤5：查看导入批次详情（复盘）**
+```bash
+curl "http://localhost:3000/api/readings/batches/{batchId}" \
+  -H "X-User-Id: viewer_wang"
+```
+
+> 返回批次信息、逐行结果、关联告警、审计日志
+
+**步骤6：导出批次详情**
+```bash
+# JSON 格式
+curl "http://localhost:3000/api/readings/batches/{batchId}/export?format=json" \
+  -H "X-User-Id: viewer_wang" \
+  -o batch_detail.json
+
+# CSV 格式
+curl "http://localhost:3000/api/readings/batches/{batchId}/export?format=csv" \
+  -H "X-User-Id: viewer_wang" \
+  -o batch_detail.csv
+```
+
+**步骤7：查看生成的告警**
 ```bash
 curl "http://localhost:3000/api/alarms?alarmStatus=open&deviceId=FREEZER-001"
 ```
 
-**步骤5：导入恢复数据（自动恢复告警）**
+**步骤8：导入恢复数据（自动恢复告警）**
 
 等待温度恢复正常后，导入恢复数据：
 ```bash
 curl -X POST http://localhost:3000/api/readings/import \
+  -H "X-User-Id: operator_li" \
   -F "file=@samples/temperature_readings_abnormal.csv" \
   -F "operator=operator_li"
 ```
 
 > CSV中12:00之后的数据是正常温度，会自动将告警标记为 recovered
 
-**步骤6：有权限人员确认告警**
+**步骤9：有权限人员确认告警**
 ```bash
 curl -X POST http://localhost:3000/api/alarms/{alarmId}/acknowledge \
   -H "Content-Type: application/json" \
@@ -464,7 +664,7 @@ curl -X POST http://localhost:3000/api/alarms/{alarmId}/acknowledge \
   -d '{"operator":"manager_zhang","note":"已确认"}'
 ```
 
-**步骤7：关闭告警**
+**步骤10：关闭告警**
 ```bash
 curl -X POST http://localhost:3000/api/alarms/{alarmId}/close \
   -H "Content-Type: application/json" \
@@ -472,17 +672,108 @@ curl -X POST http://localhost:3000/api/alarms/{alarmId}/close \
   -d '{"operator":"manager_zhang","note":"冷柜已修复，温度恢复正常"}'
 ```
 
-**步骤8：查看审计日志**
+**步骤11：查看审计日志**
 ```bash
 curl "http://localhost:3000/api/audit/logs?deviceId=FREEZER-001"
 ```
 
-**步骤9：导出审计记录**
+**步骤12：导出审计记录**
 ```bash
 curl "http://localhost:3000/api/audit/export?format=csv&deviceId=FREEZER-001" \
   -H "X-User-Id: admin" \
   -o audit_export.csv
 ```
+
+---
+
+### 场景2：权限控制验证
+
+**viewer_wang 尝试预检（应拒绝）**：
+```bash
+curl -X POST http://localhost:3000/api/readings/dry-run \
+  -H "X-User-Id: viewer_wang" \
+  -F "file=@test.csv" \
+  -F "operator=viewer_wang"
+```
+> 返回 403 无权限
+
+**operator_li 尝试确认告警（应拒绝）**：
+```bash
+curl -X POST http://localhost:3000/api/alarms/{alarmId}/acknowledge \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: operator_li" \
+  -d '{"operator":"operator_li","note":"测试"}'
+```
+> 返回 403 无权限
+
+---
+
+### 场景3：跨服务重启持久化验证
+
+**步骤1：导入数据后停止服务**
+```bash
+# 导入数据
+curl -X POST http://localhost:3000/api/readings/import \
+  -H "X-User-Id: operator_li" \
+  -F "file=@test.csv" \
+  -F "operator=operator_li"
+
+# 停止服务 (Ctrl+C 或 kill)
+```
+
+**步骤2：重启服务**
+```bash
+npm run dev
+```
+
+**步骤3：验证数据持久化**
+```bash
+# 验证批次仍然存在
+curl "http://localhost:3000/api/readings/batches/{batchId}"
+
+# 验证读数仍然存在
+curl "http://localhost:3000/api/readings?importBatchId={batchId}"
+
+# 验证告警仍然存在
+curl "http://localhost:3000/api/alarms?importBatchId={batchId}"
+```
+
+> 所有数据在服务重启后应该完整保留
+
+---
+
+### 场景4：冲突导入回归测试
+
+**步骤1：导入数据**
+```bash
+curl -X POST http://localhost:3000/api/readings/import \
+  -H "X-User-Id: operator_li" \
+  -F "file=@first_batch.csv" \
+  -F "operator=operator_li"
+```
+
+**步骤2：预检重复数据（应检测到重复）**
+```bash
+# 创建包含重复时间的CSV
+echo "FREEZER-001,-22.5,2024-01-15 08:00:00" > duplicate.csv
+echo "FREEZER-001,-23.0,2024-01-15 13:00:00" >> duplicate.csv
+
+# 预检应检测到重复时间
+curl -X POST http://localhost:3000/api/readings/dry-run \
+  -H "X-User-Id: operator_li" \
+  -F "file=@duplicate.csv" \
+  -F "operator=operator_li"
+```
+
+**步骤3：导入重复数据（重复数据应被拒绝）**
+```bash
+curl -X POST http://localhost:3000/api/readings/import \
+  -H "X-User-Id: operator_li" \
+  -F "file=@duplicate.csv" \
+  -F "operator=operator_li"
+```
+
+> 重复时间点的读数不会被重复入库
 
 ---
 
@@ -492,11 +783,27 @@ curl "http://localhost:3000/api/audit/export?format=csv&deviceId=FREEZER-001" \
 - ✅ 设备台账信息
 - ✅ 阈值配置（三级）
 - ✅ 温度读数历史
-- ✅ 导入批次记录
+- ✅ 导入批次记录（含状态、操作者、完成时间）
+- ✅ 批次逐行结果（每行的成功/失败状态、错误信息）
 - ✅ 告警状态及流转历史
 - ✅ 操作审计日志
 
+**新增数据表**：
+- `import_batches`: 导入批次主表（新增 `status`、`completed_at` 字段）
+- `batch_row_results`: 批次逐行结果表（记录每行的校验结果）
+
 重启服务后所有数据自动恢复。
+
+### 事务回滚机制
+
+导入过程使用数据库事务保证数据一致性：
+1. 导入开始时创建批次记录（状态：processing）
+2. 所有读数、告警、逐行结果在事务内写入
+3. 如果成功：COMMIT 事务，更新批次状态为 completed
+4. 如果失败：ROLLBACK 事务，更新批次状态为 rolled_back，删除逐行结果
+5. 无论成功失败，都会记录审计日志
+
+**整批失败不会留下任何读数、告警或审计残留**。
 
 ## 错误码说明
 

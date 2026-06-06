@@ -5,6 +5,7 @@ import {
   ReadingRepository,
   AlarmRepository,
   AuditRepository,
+  BatchRowResultRepository,
 } from '../../storage/repositories';
 import { getDatabase } from '../../storage/database';
 import { DeviceService } from './DeviceService';
@@ -20,6 +21,7 @@ export class ServiceContainer {
   readonly readingRepo: ReadingRepository;
   readonly alarmRepo: AlarmRepository;
   readonly auditRepo: AuditRepository;
+  readonly batchRowResultRepo: BatchRowResultRepository;
 
   readonly deviceService: DeviceService;
   readonly thresholdService: ThresholdService;
@@ -37,6 +39,7 @@ export class ServiceContainer {
     this.readingRepo = new ReadingRepository();
     this.alarmRepo = new AlarmRepository();
     this.auditRepo = new AuditRepository();
+    this.batchRowResultRepo = new BatchRowResultRepository();
 
     this.deviceService = new DeviceService(this.deviceRepo, this.auditRepo);
     this.thresholdService = new ThresholdService(this.thresholdRepo, this.auditRepo, this.deviceRepo);
@@ -45,8 +48,11 @@ export class ServiceContainer {
       this.deviceRepo,
       this.readingRepo,
       this.importBatchRepo,
+      this.batchRowResultRepo,
       this.auditRepo,
-      this.alarmService
+      this.alarmService,
+      this.thresholdRepo,
+      this.alarmRepo
     );
     this.auditService = new AuditService(this.auditRepo);
   }
