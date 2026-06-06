@@ -459,6 +459,9 @@ export async function performDryRun(
       const mockReading = {
         id: 'mock-id',
         deviceId,
+        originalTemperature: temperature,
+        correctedTemperature: temperature,
+        calibrationPlanId: null,
         temperature,
         readingTime,
         importBatchId: 'mock-batch',
@@ -483,6 +486,8 @@ export async function performDryRun(
           readingId: 'mock-reading',
           readingTime,
           temperature,
+          originalTemperature: temperature,
+          calibrationPlanId: null,
           status: 'open' as any,
           createdAt: Date.now(),
           updatedAt: Date.now(),

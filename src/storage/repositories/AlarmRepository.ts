@@ -10,8 +10,8 @@ export class AlarmRepository {
     const stmt = prepare(`
       INSERT INTO alarms (
         id, device_id, type, threshold, reading_id, reading_time, temperature,
-        status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        original_temperature, calibration_plan_id, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       id,
@@ -21,6 +21,8 @@ export class AlarmRepository {
       alarm.readingId,
       alarm.readingTime,
       alarm.temperature,
+      alarm.originalTemperature,
+      alarm.calibrationPlanId,
       alarm.status,
       now,
       now
@@ -100,6 +102,8 @@ export class AlarmRepository {
       recoveredAt: number;
       recoveredReadingId: string;
       recoveredTemperature: number;
+      recoveredOriginalTemperature: number;
+      recoveredCalibrationPlanId: string | null;
       closedAt: number;
       closedBy: string;
       closeNote: string;
@@ -113,6 +117,8 @@ export class AlarmRepository {
     if (updates.recoveredAt !== undefined) { fields.push('recovered_at = ?'); params.push(updates.recoveredAt); }
     if (updates.recoveredReadingId !== undefined) { fields.push('recovered_reading_id = ?'); params.push(updates.recoveredReadingId); }
     if (updates.recoveredTemperature !== undefined) { fields.push('recovered_temperature = ?'); params.push(updates.recoveredTemperature); }
+    if (updates.recoveredOriginalTemperature !== undefined) { fields.push('recovered_original_temperature = ?'); params.push(updates.recoveredOriginalTemperature); }
+    if (updates.recoveredCalibrationPlanId !== undefined) { fields.push('recovered_calibration_plan_id = ?'); params.push(updates.recoveredCalibrationPlanId); }
     if (updates.closedAt !== undefined) { fields.push('closed_at = ?'); params.push(updates.closedAt); }
     if (updates.closedBy !== undefined) { fields.push('closed_by = ?'); params.push(updates.closedBy); }
     if (updates.closeNote !== undefined) { fields.push('close_note = ?'); params.push(updates.closeNote); }
@@ -140,12 +146,16 @@ export class AlarmRepository {
       readingId: row.reading_id,
       readingTime: row.reading_time,
       temperature: row.temperature,
+      originalTemperature: row.original_temperature,
+      calibrationPlanId: row.calibration_plan_id,
       status: row.status as AlarmStatus,
       acknowledgedAt: row.acknowledged_at,
       acknowledgedBy: row.acknowledged_by,
       recoveredAt: row.recovered_at,
       recoveredReadingId: row.recovered_reading_id,
       recoveredTemperature: row.recovered_temperature,
+      recoveredOriginalTemperature: row.recovered_original_temperature,
+      recoveredCalibrationPlanId: row.recovered_calibration_plan_id,
       closedAt: row.closed_at,
       closedBy: row.closed_by,
       closeNote: row.close_note,

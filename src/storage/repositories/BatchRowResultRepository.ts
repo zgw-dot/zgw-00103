@@ -10,8 +10,9 @@ export class BatchRowResultRepository {
     const stmt = prepare(`
       INSERT INTO batch_row_results (
         id, import_batch_id, row_index, device_id, temperature,
+        original_temperature, corrected_temperature, calibration_plan_id,
         reading_time, status, error_message, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       id,
@@ -19,6 +20,9 @@ export class BatchRowResultRepository {
       row.rowIndex,
       row.deviceId,
       row.temperature ?? null,
+      row.originalTemperature ?? null,
+      row.correctedTemperature ?? null,
+      row.calibrationPlanId ?? null,
       row.readingTime ?? null,
       row.status,
       row.errorMessage ?? null,
@@ -36,8 +40,9 @@ export class BatchRowResultRepository {
       const stmt = prepare(`
         INSERT INTO batch_row_results (
           id, import_batch_id, row_index, device_id, temperature,
+          original_temperature, corrected_temperature, calibration_plan_id,
           reading_time, status, error_message, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       stmt.run(
         id,
@@ -45,6 +50,9 @@ export class BatchRowResultRepository {
         row.rowIndex,
         row.deviceId,
         row.temperature ?? null,
+        row.originalTemperature ?? null,
+        row.correctedTemperature ?? null,
+        row.calibrationPlanId ?? null,
         row.readingTime ?? null,
         row.status,
         row.errorMessage ?? null,
@@ -245,6 +253,9 @@ export class BatchRowResultRepository {
       rowIndex: row.row_index,
       deviceId: row.device_id,
       temperature: row.temperature,
+      originalTemperature: row.original_temperature,
+      correctedTemperature: row.corrected_temperature,
+      calibrationPlanId: row.calibration_plan_id,
       readingTime: row.reading_time,
       status: row.status as RowStatus,
       errorMessage: row.error_message,

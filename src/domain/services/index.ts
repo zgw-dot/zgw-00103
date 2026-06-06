@@ -4,4 +4,5 @@ export { AlarmService } from './AlarmService';
 export { ReadingImportService } from './ReadingImportService';
 export { AuditService } from './AuditService';
 export { EscalationService } from './EscalationService';
+export { CalibrationService } from './CalibrationService';
 export { ServiceContainer, services, initServices } from './ServiceContainer';

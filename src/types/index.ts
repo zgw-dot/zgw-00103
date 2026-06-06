@@ -31,7 +31,17 @@ export enum OperationType {
   ESCALATION_RULE_DEACTIVATE = 'escalation_rule_deactivate',
   ESCALATION_RULE_REVOKE = 'escalation_rule_revoke',
   ESCALATION_TICKET_CREATE = 'escalation_ticket_create',
-  ESCALATION_TICKET_CLAIM = 'escalation_ticket_claim'
+  ESCALATION_TICKET_CLAIM = 'escalation_ticket_claim',
+  CALIBRATION_PLAN_CREATE = 'calibration_plan_create',
+  CALIBRATION_PLAN_DEACTIVATE = 'calibration_plan_deactivate',
+  CALIBRATION_PLAN_REVOKE = 'calibration_plan_revoke',
+  READING_CORRECTION_APPLY = 'reading_correction_apply'
+}
+
+export enum CalibrationPlanStatus {
+  ACTIVE = 'active',
+  INACTIVE = 'inactive',
+  REVOKED = 'revoked'
 }
 
 export enum EscalationRuleStatus {
@@ -50,6 +60,61 @@ export enum EscalationTicketStatus {
   PENDING = 'pending',
   CLAIMED = 'claimed',
   RESOLVED = 'resolved'
+}
+
+export interface CalibrationPlan {
+  id: string;
+  deviceId: string;
+  storeId: string;
+  offsetValue: number;
+  effectiveStartTime: number;
+  effectiveEndTime: number | null;
+  reason: string;
+  personInCharge: string;
+  status: CalibrationPlanStatus;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  deactivatedAt?: number;
+  deactivatedBy?: string;
+  revokedAt?: number;
+  revokedBy?: string;
+}
+
+export interface ReadingCorrection {
+  id: string;
+  readingId: string;
+  deviceId: string;
+  calibrationPlanId: string;
+  originalTemperature: number;
+  correctedTemperature: number;
+  offsetValue: number;
+  readingTime: number;
+  importBatchId: string;
+  createdAt: number;
+}
+
+export interface CreateCalibrationPlanInput {
+  deviceId: string;
+  offsetValue: number;
+  effectiveStartTime: number;
+  effectiveEndTime?: number;
+  reason: string;
+  personInCharge: string;
+}
+
+export interface CalibrationFilters extends QueryFilters {
+  planStatus?: CalibrationPlanStatus;
+  deviceId?: string;
+  storeId?: string;
+}
+
+export interface CalibrationApplyResult {
+  planId: string;
+  planName: string;
+  offsetValue: number;
+  originalTemperature: number;
+  correctedTemperature: number;
 }
 
 export interface EscalationRule {
@@ -138,6 +203,9 @@ export interface TemperatureReading {
   id?: string;
   deviceId: string;
   temperature: number;
+  originalTemperature: number;
+  correctedTemperature: number;
+  calibrationPlanId: string | null;
   readingTime: number;
   importBatchId: string;
   createdAt: number;
@@ -180,12 +248,16 @@ export interface Alarm {
   readingId: string;
   readingTime: number;
   temperature: number;
+  originalTemperature: number;
+  calibrationPlanId: string | null;
   status: AlarmStatus;
   acknowledgedAt?: number;
   acknowledgedBy?: string;
   recoveredAt?: number;
   recoveredReadingId?: string;
   recoveredTemperature?: number;
+  recoveredOriginalTemperature?: number;
+  recoveredCalibrationPlanId?: string | null;
   closedAt?: number;
   closedBy?: string;
   closeNote?: string;
@@ -366,6 +438,9 @@ export interface BatchRowResult {
   rowIndex: number;
   deviceId: string;
   temperature?: number;
+  originalTemperature?: number;
+  correctedTemperature?: number;
+  calibrationPlanId?: string | null;
   readingTime?: number;
   status: RowStatus;
   errorMessage?: string;

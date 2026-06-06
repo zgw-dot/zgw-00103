@@ -8,13 +8,19 @@ export class ReadingRepository {
     const id = `rd-${crypto.randomUUID()}`;
     const now = Date.now();
     const stmt = prepare(`
-      INSERT INTO temperature_readings (id, device_id, temperature, reading_time, import_batch_id, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO temperature_readings (
+        id, device_id, temperature, original_temperature,
+        corrected_temperature, calibration_plan_id, reading_time,
+        import_batch_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       id,
       reading.deviceId,
       reading.temperature,
+      reading.originalTemperature,
+      reading.correctedTemperature,
+      reading.calibrationPlanId,
       reading.readingTime,
       reading.importBatchId,
       now
@@ -132,6 +138,9 @@ export class ReadingRepository {
       id: row.id,
       deviceId: row.device_id,
       temperature: row.temperature,
+      originalTemperature: row.original_temperature,
+      correctedTemperature: row.corrected_temperature,
+      calibrationPlanId: row.calibration_plan_id,
       readingTime: row.reading_time,
       importBatchId: row.import_batch_id,
       createdAt: row.created_at,

@@ -10,6 +10,8 @@ import {
   BatchRowRemarkRepository,
   EscalationRuleRepository,
   EscalationTicketRepository,
+  CalibrationPlanRepository,
+  ReadingCorrectionRepository,
 } from '../../storage/repositories';
 import { getDatabase } from '../../storage/database';
 import { DeviceService } from './DeviceService';
@@ -18,6 +20,7 @@ import { AlarmService } from './AlarmService';
 import { ReadingImportService } from './ReadingImportService';
 import { AuditService } from './AuditService';
 import { EscalationService } from './EscalationService';
+import { CalibrationService } from './CalibrationService';
 
 export class ServiceContainer {
   readonly deviceRepo: DeviceRepository;
@@ -31,6 +34,8 @@ export class ServiceContainer {
   readonly batchRowRemarkRepo: BatchRowRemarkRepository;
   readonly escalationRuleRepo: EscalationRuleRepository;
   readonly escalationTicketRepo: EscalationTicketRepository;
+  readonly calibrationPlanRepo: CalibrationPlanRepository;
+  readonly readingCorrectionRepo: ReadingCorrectionRepository;
 
   readonly deviceService: DeviceService;
   readonly thresholdService: ThresholdService;
@@ -38,6 +43,7 @@ export class ServiceContainer {
   readonly readingImportService: ReadingImportService;
   readonly auditService: AuditService;
   readonly escalationService: EscalationService;
+  readonly calibrationService: CalibrationService;
 
   private static instance: ServiceContainer | null = null;
   private static initPromise: Promise<ServiceContainer> | null = null;
@@ -54,10 +60,18 @@ export class ServiceContainer {
     this.batchRowRemarkRepo = new BatchRowRemarkRepository();
     this.escalationRuleRepo = new EscalationRuleRepository();
     this.escalationTicketRepo = new EscalationTicketRepository();
+    this.calibrationPlanRepo = new CalibrationPlanRepository();
+    this.readingCorrectionRepo = new ReadingCorrectionRepository();
 
     this.deviceService = new DeviceService(this.deviceRepo, this.auditRepo);
     this.thresholdService = new ThresholdService(this.thresholdRepo, this.auditRepo, this.deviceRepo);
     this.alarmService = new AlarmService(this.alarmRepo, this.auditRepo, this.deviceRepo, this.thresholdRepo);
+    this.calibrationService = new CalibrationService(
+      this.calibrationPlanRepo,
+      this.readingCorrectionRepo,
+      this.deviceRepo,
+      this.auditRepo
+    );
     this.readingImportService = new ReadingImportService(
       this.deviceRepo,
       this.readingRepo,
@@ -68,7 +82,8 @@ export class ServiceContainer {
       this.alarmService,
       this.thresholdRepo,
       this.alarmRepo,
-      this.idempotencyKeyRepo
+      this.idempotencyKeyRepo,
+      this.calibrationService
     );
     this.auditService = new AuditService(this.auditRepo);
     this.escalationService = new EscalationService(

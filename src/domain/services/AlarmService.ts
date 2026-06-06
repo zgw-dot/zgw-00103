@@ -134,6 +134,8 @@ export class AlarmService {
           readingId: reading.id!,
           readingTime: reading.readingTime,
           temperature: reading.temperature,
+          originalTemperature: reading.originalTemperature,
+          calibrationPlanId: reading.calibrationPlanId,
           status: AlarmStatus.OPEN,
         });
       }
@@ -151,12 +153,15 @@ export class AlarmService {
     const alarm = this.alarmRepo.create(data);
 
     const device = this.deviceRepo.findById(data.deviceId);
+    const calibrationInfo = data.calibrationPlanId
+      ? `，原始温度${data.originalTemperature}℃，校准计划${data.calibrationPlanId}`
+      : '';
     this.auditRepo.create({
       operationType: OperationType.READING_IMPORT,
       entityId: alarm.id,
       entityType: 'alarm',
       operator: 'system',
-      details: `生成告警：${data.type} 温度${data.temperature}℃ 超出阈值${data.threshold}℃`,
+      details: `生成告警：${data.type} 温度${data.temperature}℃ 超出阈值${data.threshold}℃${calibrationInfo}`,
       alarmId: alarm.id,
       deviceId: data.deviceId,
       storeId: device?.storeId,
@@ -176,6 +181,8 @@ export class AlarmService {
       recoveredAt: now,
       recoveredReadingId: reading.id!,
       recoveredTemperature: reading.temperature,
+      recoveredOriginalTemperature: reading.originalTemperature,
+      recoveredCalibrationPlanId: reading.calibrationPlanId,
     });
 
     if (!updated) {
@@ -183,12 +190,15 @@ export class AlarmService {
     }
 
     const device = this.deviceRepo.findById(alarm.deviceId);
+    const calibrationInfo = reading.calibrationPlanId
+      ? `，恢复时原始温度${reading.originalTemperature}℃，校准计划${reading.calibrationPlanId}`
+      : '';
     this.auditRepo.create({
       operationType: OperationType.ALARM_RECOVER,
       entityId: alarmId,
       entityType: 'alarm',
       operator: 'system',
-      details: `告警自动恢复：温度从${alarm.temperature}℃恢复至${reading.temperature}℃`,
+      details: `告警自动恢复：温度从${alarm.temperature}℃恢复至${reading.temperature}℃${calibrationInfo}`,
       alarmId,
       deviceId: alarm.deviceId,
       storeId: device?.storeId,

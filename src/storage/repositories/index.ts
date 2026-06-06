@@ -9,3 +9,5 @@ export { IdempotencyKeyRepository } from './IdempotencyKeyRepository';
 export { BatchRowRemarkRepository } from './BatchRowRemarkRepository';
 export { EscalationRuleRepository } from './EscalationRuleRepository';
 export { EscalationTicketRepository } from './EscalationTicketRepository';
+export { CalibrationPlanRepository } from './CalibrationPlanRepository';
+export { ReadingCorrectionRepository } from './ReadingCorrectionRepository';

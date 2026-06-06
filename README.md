@@ -12,6 +12,7 @@ src/
 │   ├── alarms.ts           # 告警管理接口
 │   ├── readings.ts         # 读数导入接口
 │   ├── audit.ts            # 审计查询接口
+│   ├── calibration.ts      # 校准计划和修正记录接口
 │   └── index.ts
 ├── domain/                 # 领域层 - 业务逻辑
 │   ├── rules/              # 领域规则
@@ -25,6 +26,7 @@ src/
 │       ├── AlarmService.ts
 │       ├── ReadingImportService.ts
 │       ├── AuditService.ts
+│       ├── CalibrationService.ts  # 新增：校准计划和读数修正服务
 │       ├── ServiceContainer.ts
 │       └── index.ts
 ├── storage/                # 存储层 - 数据持久化
@@ -33,10 +35,12 @@ src/
 │       ├── DeviceRepository.ts
 │       ├── ThresholdRepository.ts
 │       ├── ImportBatchRepository.ts    # 批次管理（增强版）
-│       ├── BatchRowResultRepository.ts # 新增：逐行结果存储
+│       ├── BatchRowResultRepository.ts # 逐行结果存储
 │       ├── ReadingRepository.ts
 │       ├── AlarmRepository.ts
 │       ├── AuditRepository.ts
+│       ├── CalibrationPlanRepository.ts     # 新增：校准计划存储
+│       ├── ReadingCorrectionRepository.ts   # 新增：读数修正记录存储
 │       └── index.ts
 ├── validation/             # 校验层 - 参数验证
 │   ├── schemas.ts          # Zod校验Schema
@@ -267,6 +271,120 @@ open → acknowledged → recovered → closed
 - **告警详情**：包含 `escalationStatus`、`escalationTicketId`、`escalationRuleName` 等字段
 - **告警列表**：每条告警都包含升级状态信息
 - **审计日志**：记录规则创建、停用、撤销、升级单生成、领取等操作
+
+### 6. 设备校准计划和读数修正
+
+当设备传感器出现漂移时，可以创建校准计划，在导入温度 CSV 时自动应用偏移修正。
+
+#### 6.1 核心概念
+
+- **校准计划 (Calibration Plan)**: 定义某个设备在特定时间段内的温度偏移修正规则
+- **读数修正 (Reading Correction)**: 每次导入时应用校准计划的具体记录，保存原始温度、修正后温度和命中的校准计划
+- **偏移值 (Offset Value)**: 需要修正的温度值（℃），支持正负值
+  - `+1.5` 表示在原始温度基础上加 1.5℃
+  - `-0.5` 表示在原始温度基础上减 0.5℃
+
+#### 6.2 计划状态生命周期
+
+```
+active → inactive → revoked
+   ↓         ↓          ↓
+  生效中     已停用     已撤销
+```
+
+- **`active` (生效中)**: 导入时会自动应用该计划
+- **`inactive` (已停用)**: 不再应用于新导入，但历史修正记录保留
+- **`revoked` (已撤销)**: 永久停用，历史修正记录保留，**不可恢复**
+
+> **重要保证**：停用或撤销计划不会修改任何历史导入结果，已应用的修正记录保持不变。
+
+#### 6.3 自动校准流程
+
+```
+CSV 导入 → 解析每行数据 → 按设备+时间匹配校准计划 →
+  匹配成功 → 应用偏移修正 → 保存原始温度、修正后温度、校准计划ID →
+            基于修正后温度进行告警判断 → 生成告警
+  匹配失败 → 不修正，直接使用原始温度
+```
+
+#### 6.4 时间匹配规则
+
+对于每个读数，查找满足以下条件的校准计划：
+1. 计划状态为 `active`
+2. 设备 ID 匹配
+3. 读数时间 ≥ 计划生效开始时间
+4. 读数时间 ≤ 计划生效结束时间（或计划无结束时间，即永久生效）
+
+**匹配优先级**：
+- 如果有多个计划覆盖同一时间点，选择**生效开始时间最晚**的计划
+- 同一设备在同一时间段内只能有一个 active 计划（创建时会自动检测冲突）
+
+#### 6.5 权限控制
+
+| 角色 | 权限 |
+|------|------|
+| `admin` / `manager` | 创建校准计划、停用计划、撤销计划、查看计划、查看修正记录、导出校准数据 |
+| `operator` | 查看计划、查看修正记录、导出校准数据、**执行 CSV 导入**（导入时自动应用校准） |
+| `viewer` | 查看计划、查看修正记录、导出校准数据 |
+
+**权限边界**：
+- 👁️ `viewer`: 只能查看和导出，不能创建/修改计划
+- 📥 `operator`: 可以执行 CSV 导入（导入时自动应用校准），但不能管理计划
+- 🔧 `manager`/`admin`: 可以完整管理计划生命周期（创建、停用、撤销）
+- ❌ 停用/撤销计划不会修改任何历史修正结果，只会影响未来的导入
+
+#### 6.6 冲突处理与错误响应
+
+| 冲突场景 | 错误响应 | 说明 |
+|---------|---------|------|
+| 时间段重叠 | 409 CONFLICT | 同一设备在同一时间段内已存在 active 计划 |
+| 无效偏移值 | 400 VALIDATION_ERROR | 偏移值必须在 -50℃ 到 +50℃ 之间 |
+| 停用设备创建计划 | 400 VALIDATION_ERROR | 已停用的设备不能创建校准计划 |
+| 跨门店设备不匹配 | 500 BUSINESS_ERROR | 校准计划的门店与设备的门店不匹配 |
+| 重复停用 | 409 CONFLICT | 已停用的计划不能再次停用 |
+| 无效时间范围 | 400 VALIDATION_ERROR | 开始时间 ≥ 结束时间 |
+| 负责人不存在 | 400 VALIDATION_ERROR | 负责人必须是系统已知用户 |
+
+#### 6.7 数据存储设计
+
+**校准影响会贯穿所有数据层：**
+
+1. **温度读数** (`temperature_readings`):
+   - `original_temperature`: 原始读数（CSV 中的值）
+   - `corrected_temperature`: 修正后温度（用于告警判断）
+   - `calibration_plan_id`: 命中的校准计划 ID（无校准则为 NULL）
+   - `temperature`: 等价于 `corrected_temperature`
+
+2. **告警** (`alarms`):
+   - `original_temperature`: 告警读数的原始温度
+   - `calibration_plan_id`: 触发告警时使用的校准计划
+   - `recovered_original_temperature`: 恢复读数的原始温度
+   - `recovered_calibration_plan_id`: 恢复读数使用的校准计划
+
+3. **批次行结果** (`batch_row_results`):
+   - `original_temperature`: 该行的原始温度
+   - `corrected_temperature`: 该行的修正后温度
+   - `calibration_plan_id`: 该行命中的校准计划
+
+4. **读数修正记录** (`reading_corrections`):
+   - 专用表记录每次应用校准的详细信息，用于审计和追溯
+
+#### 6.8 校准信息展示位置
+
+校准信息会在以下所有界面/接口中展示：
+- ✅ 批次详情（逐行结果）
+- ✅ 告警详情和告警列表
+- ✅ JSON/CSV 导出（批次、告警、审计日志）
+- ✅ 校准计划详情（关联的修正记录列表）
+- ✅ 修正记录列表和导出
+- ✅ 审计日志（包含校准创建、停用、撤销操作）
+
+#### 6.9 持久化保证
+
+所有数据存储在 SQLite 数据库文件中：
+- 同一 `DB_PATH` 重启后，校准计划、历史修正结果和审计记录仍可查询
+- 数据库文件可以直接备份和迁移
+- 事务保证：创建计划、导入读数、应用修正都在事务中执行，失败时全部回滚
 
 ### 3.2 批次复盘详情与失败行处置进度
 
@@ -1191,6 +1309,179 @@ X-User-Id: operator_li
 
 ---
 
+### 设备校准计划和读数修正
+
+#### 创建校准计划
+```http
+POST /api/calibration/plans
+Content-Type: application/json
+X-User-Id: manager_zhang
+
+{
+  "deviceId": "FREEZER-001",
+  "offsetValue": 1.5,
+  "effectiveStartTime": 1705276800000,
+  "effectiveEndTime": 1707868800000,
+  "reason": "传感器漂移校准，经计量检测需加1.5℃修正",
+  "personInCharge": "manager_zhang",
+  "operator": "manager_zhang"
+}
+```
+
+**字段说明**：
+- `offsetValue`: 偏移值（℃），范围 -50 到 +50，正数表示在原始读数基础上加，负数表示减
+- `effectiveStartTime`: 生效开始时间（毫秒时间戳）
+- `effectiveEndTime`: 生效结束时间（毫秒时间戳，可选，不填则永久生效）
+- `reason`: 校准原因（1-500字符）
+- `personInCharge`: 负责人，必须是系统已知用户（admin/manager_zhang/operator_li/viewer_wang）
+
+**成功响应示例**：
+```json
+{
+  "success": true,
+  "data": {
+    "id": "cal-xxxx",
+    "deviceId": "FREEZER-001",
+    "storeId": "STORE-001",
+    "offsetValue": 1.5,
+    "effectiveStartTime": 1705276800000,
+    "effectiveEndTime": 1707868800000,
+    "reason": "传感器漂移校准",
+    "personInCharge": "manager_zhang",
+    "status": "active",
+    "createdBy": "manager_zhang",
+    "createdAt": 1705305600000
+  },
+  "message": "校准计划创建成功"
+}
+```
+
+**冲突响应示例**（时间段重叠）：
+```json
+{
+  "success": false,
+  "code": "CONFLICT",
+  "message": "设备 FREEZER-001 在该时间段内已存在 active 校准计划"
+}
+```
+
+#### 查询校准计划列表
+```http
+GET /api/calibration/plans?planStatus=active&deviceId=FREEZER-001&page=1&pageSize=50
+X-User-Id: viewer_wang
+```
+
+**筛选参数**：
+- `planStatus`: 计划状态 (active/inactive/revoked)
+- `deviceId`: 设备ID
+- `storeId`: 门店ID
+- `startTime`: 生效时间范围开始（毫秒时间戳）
+- `endTime`: 生效时间范围结束（毫秒时间戳）
+- `page`: 页码，默认 1
+- `pageSize`: 每页条数，默认 50，最大 500
+
+#### 查询单个校准计划
+```http
+GET /api/calibration/plans/{planId}
+X-User-Id: viewer_wang
+```
+
+**响应包含**：计划基本信息、关联的修正记录列表、创建/停用/撤销的审计日志
+
+#### 停用校准计划
+```http
+POST /api/calibration/plans/{planId}/deactivate
+Content-Type: application/json
+X-User-Id: manager_zhang
+
+{
+  "operator": "manager_zhang"
+}
+```
+
+**成功响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "id": "cal-xxxx",
+    "status": "inactive",
+    "deactivatedBy": "manager_zhang",
+    "deactivatedAt": 1705305700000
+  },
+  "message": "校准计划停用成功，历史校准结果保持不变"
+}
+```
+
+> **重要**：停用计划不会修改任何历史导入结果，已应用的修正记录保持不变。
+
+#### 撤销校准计划（不可恢复）
+```http
+POST /api/calibration/plans/{planId}/revoke
+Content-Type: application/json
+X-User-Id: manager_zhang
+
+{
+  "operator": "manager_zhang"
+}
+```
+
+**成功响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "id": "cal-xxxx",
+    "status": "revoked",
+    "revokedBy": "manager_zhang",
+    "revokedAt": 1705305800000
+  },
+  "message": "校准计划撤销成功，历史校准结果保持不变"
+}
+```
+
+> **重要**：撤销后计划永久失效，不可恢复，但历史修正记录保持不变。
+
+#### 查询计划关联的修正记录
+```http
+GET /api/calibration/plans/{planId}/corrections?page=1&pageSize=50
+X-User-Id: viewer_wang
+```
+
+#### 查询所有读数修正记录
+```http
+GET /api/calibration/corrections?deviceId=FREEZER-001&page=1&pageSize=50
+X-User-Id: viewer_wang
+```
+
+**筛选参数**：
+- `deviceId`: 设备ID
+- `storeId`: 门店ID
+- `startTime`: 修正时间范围开始
+- `endTime`: 修正时间范围结束
+
+#### 查询批次关联的修正记录
+```http
+GET /api/calibration/corrections/batch/{batchId}
+X-User-Id: viewer_wang
+```
+
+#### 导出校准数据
+```http
+GET /api/calibration/export?format=csv&planStatus=active
+X-User-Id: viewer_wang
+```
+
+支持 `format=csv` 或 `format=json`，筛选参数与列表查询一致。
+
+**CSV 导出包含字段**：
+- 校准计划：计划ID、设备ID、门店ID、偏移值、生效开始时间、生效结束时间、原因、负责人、状态、创建人、创建时间、停用人、停用时间、撤销人、撤销时间
+- 修正记录：修正记录ID、校准计划ID、设备ID、门店ID、批次ID、读数时间、原始温度、修正后温度、偏移值、创建时间
+
+**JSON 导出包含**：完整的校准计划信息和关联的修正记录列表
+
+---
+
 ## 完整业务流程示例
 
 ### 场景1：从异常到恢复的完整链路
@@ -1378,6 +1669,210 @@ curl "http://localhost:3000/api/alarms?importBatchId={batchId}"
 
 ---
 
+### 场景5：设备校准完整流程
+
+**步骤1：创建设备并设置阈值**
+```bash
+# 创建设备
+curl -X POST http://localhost:3000/api/devices \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: admin" \
+  -d '{"id":"FREEZER-002","name":"蔬菜冷藏柜2号","storeId":"STORE-001","storeName":"北京朝阳路店","status":"active"}'
+
+# 设置阈值
+curl -X PUT http://localhost:3000/api/thresholds/device/FREEZER-002 \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: admin" \
+  -d '{"minTemp":2,"maxTemp":8}'
+```
+
+**步骤2：创建校准计划（传感器漂移 +2℃）**
+```bash
+# 设备传感器漂移，实际温度比读数高2℃
+curl -X POST http://localhost:3000/api/calibration/plans \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: manager_zhang" \
+  -d '{
+    "deviceId": "FREEZER-002",
+    "offsetValue": 2.0,
+    "effectiveStartTime": 1705276800000,
+    "reason": "传感器漂移校准，经计量检测实际温度偏高2℃",
+    "personInCharge": "manager_zhang",
+    "operator": "manager_zhang"
+  }'
+```
+
+**步骤3：导入温度数据（自动应用校准）**
+```bash
+# 创建测试CSV：原始读数5℃，修正后应为7℃（在2-8℃范围内，正常）
+echo "deviceId,temperature,readingTime" > cal_test.csv
+echo "FREEZER-002,5.0,2024-01-15 08:00:00" >> cal_test.csv
+echo "FREEZER-002,6.5,2024-01-15 09:00:00" >> cal_test.csv
+
+# 导入（operator权限即可，导入时自动应用校准）
+curl -X POST http://localhost:3000/api/readings/import \
+  -H "X-User-Id: operator_li" \
+  -F "file=@cal_test.csv" \
+  -F "operator=operator_li"
+```
+
+> 导入后，原始温度5.0℃会被修正为7.0℃，6.5℃修正为8.5℃（触发高温告警）
+
+**步骤4：查看批次详情（验证校准信息）**
+```bash
+curl "http://localhost:3000/api/readings/batches/{batchId}" \
+  -H "X-User-Id: viewer_wang"
+```
+
+> 返回的每行结果应包含：`original_temperature`、`corrected_temperature`、`calibration_plan_id`
+
+**步骤5：查看告警（基于修正后温度）**
+```bash
+curl "http://localhost:3000/api/alarms?deviceId=FREEZER-002" \
+  -H "X-User-Id: viewer_wang"
+```
+
+> 告警应显示：原始温度6.5℃，修正后8.5℃，超过阈值上限8℃，触发高温告警
+
+**步骤6：查看读数修正记录**
+```bash
+curl "http://localhost:3000/api/calibration/corrections?deviceId=FREEZER-002" \
+  -H "X-User-Id: viewer_wang"
+```
+
+**步骤7：导出批次详情（包含校准信息）**
+```bash
+# JSON格式
+curl "http://localhost:3000/api/readings/batches/{batchId}/export?format=json" \
+  -H "X-User-Id: viewer_wang" \
+  -o batch_with_calibration.json
+
+# CSV格式
+curl "http://localhost:3000/api/readings/batches/{batchId}/export?format=csv" \
+  -H "X-User-Id: viewer_wang" \
+  -o batch_with_calibration.csv
+```
+
+**步骤8：停用校准计划（历史保持不变）**
+```bash
+curl -X POST http://localhost:3000/api/calibration/plans/{planId}/deactivate \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: manager_zhang" \
+  -d '{"operator": "manager_zhang"}'
+```
+
+**步骤9：验证停用后历史不变**
+```bash
+# 再次查询修正记录，应与停用前完全一致
+curl "http://localhost:3000/api/calibration/corrections?deviceId=FREEZER-002" \
+  -H "X-User-Id: viewer_wang"
+
+# 再次查询批次详情，校准信息应保持不变
+curl "http://localhost:3000/api/readings/batches/{batchId}" \
+  -H "X-User-Id: viewer_wang"
+```
+
+**步骤10：导入新数据（停用后不再应用校准）**
+```bash
+# 停用后导入相同数据，不再应用校准
+curl -X POST http://localhost:3000/api/readings/import \
+  -H "X-User-Id: operator_li" \
+  -F "file=@cal_test.csv" \
+  -F "operator=operator_li"
+```
+
+> 由于读数时间重复，会被拒绝（重复数据检测）
+
+**步骤11：撤销校准计划（不可恢复）**
+```bash
+curl -X POST http://localhost:3000/api/calibration/plans/{planId}/revoke \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: manager_zhang" \
+  -d '{"operator": "manager_zhang"}'
+```
+
+**步骤12：重启服务验证持久化**
+```bash
+# 停止服务（Ctrl+C），然后重启
+npm run dev
+
+# 重启后查询校准计划
+curl "http://localhost:3000/api/calibration/plans?deviceId=FREEZER-002" \
+  -H "X-User-Id: viewer_wang"
+
+# 重启后查询修正记录
+curl "http://localhost:3000/api/calibration/corrections?deviceId=FREEZER-002" \
+  -H "X-User-Id: viewer_wang"
+
+# 重启后查询审计日志
+curl "http://localhost:3000/api/audit/logs?deviceId=FREEZER-002" \
+  -H "X-User-Id: viewer_wang"
+```
+
+> 所有数据在重启后应完整保留：校准计划状态为 revoked，修正记录完整，审计日志包含创建、停用、撤销操作
+
+---
+
+### 场景6：校准权限边界验证
+
+**viewer_wang 尝试创建校准计划（应拒绝）**：
+```bash
+curl -X POST http://localhost:3000/api/calibration/plans \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: viewer_wang" \
+  -d '{"deviceId":"FREEZER-002","offsetValue":1.0,"effectiveStartTime":1705276800000,"reason":"测试","personInCharge":"admin","operator":"viewer_wang"}'
+```
+> 返回 403 无权限
+
+**operator_li 尝试停用校准计划（应拒绝）**：
+```bash
+curl -X POST http://localhost:3000/api/calibration/plans/{planId}/deactivate \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: operator_li" \
+  -d '{"operator": "operator_li"}'
+```
+> 返回 403 无权限
+
+**operator_li 执行导入（自动应用校准，应允许）**：
+```bash
+curl -X POST http://localhost:3000/api/readings/import \
+  -H "X-User-Id: operator_li" \
+  -F "file=@cal_test.csv" \
+  -F "operator=operator_li"
+```
+> 导入成功，自动应用校准
+
+---
+
+### 场景7：校准冲突检测
+
+**时间段重叠冲突**：
+```bash
+# 创建第一个计划
+curl -X POST http://localhost:3000/api/calibration/plans \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: manager_zhang" \
+  -d '{"deviceId":"FREEZER-002","offsetValue":1.0,"effectiveStartTime":1705276800000,"effectiveEndTime":1707868800000,"reason":"测试1","personInCharge":"manager_zhang","operator":"manager_zhang"}'
+
+# 创建第二个计划（时间段重叠，应拒绝）
+curl -X POST http://localhost:3000/api/calibration/plans \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: manager_zhang" \
+  -d '{"deviceId":"FREEZER-002","offsetValue":2.0,"effectiveStartTime":1705363200000,"effectiveEndTime":1707955200000,"reason":"测试2","personInCharge":"manager_zhang","operator":"manager_zhang"}'
+```
+> 返回 409 CONFLICT，提示时间段重叠
+
+**无效偏移值**：
+```bash
+curl -X POST http://localhost:3000/api/calibration/plans \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: manager_zhang" \
+  -d '{"deviceId":"FREEZER-002","offsetValue":100.0,"effectiveStartTime":1705276800000,"reason":"测试","personInCharge":"manager_zhang","operator":"manager_zhang"}'
+```
+> 返回 400 VALIDATION_ERROR，提示偏移值必须在 -50 到 50 之间
+
+---
+
 ### 场景4：冲突导入回归测试
 
 **步骤1：导入数据**
@@ -1426,8 +1921,12 @@ curl -X POST http://localhost:3000/api/readings/import \
 
 **新增数据表**：
 - `import_batches`: 导入批次主表（新增 `status`、`completed_at` 字段）
-- `batch_row_results`: 批次逐行结果表（记录每行的校验结果）
+- `batch_row_results`: 批次逐行结果表（记录每行的校验结果，包含 `original_temperature`、`corrected_temperature`、`calibration_plan_id`）
 - `batch_row_remarks`: **异常行处置备注表**（记录对失败行的处置备注，包含处理人、处理时间、原因）
+- `calibration_plans`: **校准计划表**（记录校准计划的生命周期，包含设备、偏移值、生效时间、状态、负责人）
+- `reading_corrections`: **读数修正记录表**（记录每次应用校准的详细信息，用于审计和追溯）
+- `escalation_rules`: 告警升级规则表
+- `escalation_tickets`: 告警升级派单表
 
 重启服务后所有数据自动恢复，包括备注信息。
 

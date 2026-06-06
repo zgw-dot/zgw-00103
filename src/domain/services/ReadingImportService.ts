@@ -15,6 +15,7 @@ import {
 } from '../../storage/repositories';
 import { ValidationError } from '../../utils/errors';
 import { AlarmService } from './AlarmService';
+import { CalibrationService } from './CalibrationService';
 import {
   CsvReadingRow,
   ImportResult,
@@ -62,6 +63,9 @@ import { NotFoundError, BusinessError, ConflictError } from '../../utils/errors'
 const EXPORT_ROW_FIELDS: Array<keyof BatchRowResultWithRemark> = [
   'rowIndex',
   'deviceId',
+  'originalTemperature',
+  'correctedTemperature',
+  'calibrationPlanId',
   'temperature',
   'readingTime',
   'status',
@@ -85,7 +89,9 @@ const EXPORT_ALARM_FIELDS: Array<keyof Alarm> = [
   'deviceId',
   'type',
   'threshold',
+  'originalTemperature',
   'temperature',
+  'calibrationPlanId',
   'readingTime',
   'status',
   'readingId',
@@ -93,7 +99,9 @@ const EXPORT_ALARM_FIELDS: Array<keyof Alarm> = [
   'acknowledgedBy',
   'recoveredAt',
   'recoveredReadingId',
+  'recoveredOriginalTemperature',
   'recoveredTemperature',
+  'recoveredCalibrationPlanId',
   'closedAt',
   'closedBy',
   'closeNote',
@@ -181,7 +189,8 @@ export class ReadingImportService {
     private alarmService: AlarmService,
     private thresholdRepo: ThresholdRepository,
     private alarmRepo: AlarmRepository,
-    private idempotencyKeyRepo: IdempotencyKeyRepository
+    private idempotencyKeyRepo: IdempotencyKeyRepository,
+    private calibrationService: CalibrationService
   ) {}
 
   private async parseCsvWithAutoHeaderDetection(fileStream: Readable): Promise<CsvReadingRow[]> {
@@ -431,21 +440,51 @@ export class ReadingImportService {
         const { deviceId, temperature, readingTime } = validated.parsed!;
         const device = this.deviceRepo.findById(deviceId)!;
 
+        const calibrationResult = this.calibrationService.applyCalibration(
+          deviceId,
+          readingTime,
+          temperature,
+          device.storeId
+        );
+
+        const originalTemperature = calibrationResult.originalTemperature;
+        const correctedTemperature = calibrationResult.correctedTemperature;
+        const calibrationPlanId = calibrationResult.plan?.id || null;
+
         this.batchRowResultRepo.create({
           importBatchId: batch.id,
           rowIndex: validated.rowIndex,
           deviceId,
-          temperature,
+          originalTemperature,
+          correctedTemperature,
+          calibrationPlanId,
+          temperature: correctedTemperature,
           readingTime,
           status: RowStatus.SUCCESS,
         });
 
         const reading = this.readingRepo.create({
           deviceId,
-          temperature,
+          originalTemperature,
+          correctedTemperature,
+          calibrationPlanId,
+          temperature: correctedTemperature,
           readingTime,
           importBatchId: batch.id,
         });
+
+        if (calibrationResult.plan) {
+          this.calibrationService.createCorrection(
+            reading.id!,
+            deviceId,
+            calibrationResult.plan.id,
+            originalTemperature,
+            correctedTemperature,
+            calibrationResult.offsetApplied,
+            readingTime,
+            batch.id
+          );
+        }
 
         const alarmResult = this.alarmService.processReadingForAlarms(
           reading,
@@ -461,11 +500,36 @@ export class ReadingImportService {
         const parsed = validated.parsed;
         const temperature = parsed?.temperature ?? parseFloat(row.temperature);
         const readingTime = parsed?.readingTime ?? parseDateTime(row.readingTime);
+        const device = parsed?.deviceId ? this.deviceRepo.findById(parsed.deviceId) : null;
+
+        let originalTemperature: number | undefined = undefined;
+        let correctedTemperature: number | undefined = undefined;
+        let calibrationPlanId: string | null = null;
+
+        if (parsed && device && !isNaN(temperature) && readingTime !== null) {
+          try {
+            const calibrationResult = this.calibrationService.applyCalibration(
+              parsed.deviceId,
+              readingTime,
+              temperature,
+              device.storeId
+            );
+            originalTemperature = calibrationResult.originalTemperature;
+            correctedTemperature = calibrationResult.correctedTemperature;
+            calibrationPlanId = calibrationResult.plan?.id || null;
+          } catch (calibError) {
+            logger.warn(`校准失败，跳过该行校准：第${validated.rowIndex}行`, { error: calibError });
+          }
+        }
+
         this.batchRowResultRepo.create({
           importBatchId: batch.id,
           rowIndex: validated.rowIndex,
           deviceId: row.deviceId,
-          temperature: isNaN(temperature) ? undefined : temperature,
+          originalTemperature,
+          correctedTemperature,
+          calibrationPlanId,
+          temperature: isNaN(temperature) ? undefined : (correctedTemperature ?? temperature),
           readingTime: readingTime === null ? undefined : readingTime,
           status: RowStatus.FAILED,
           errorMessage: validated.error,
@@ -489,12 +553,16 @@ export class ReadingImportService {
         });
       }
 
+      const calibrationCount = prepare(`
+        SELECT COUNT(*) as count FROM reading_corrections WHERE import_batch_id = ?
+      `).get(batch.id) as { count: number };
+
       this.auditRepo.create({
         operationType: OperationType.READING_IMPORT,
         entityId: batch.id,
         entityType: 'import_batch',
         operator,
-        details: `导入CSV文件"${fileName}"，共${rows.length}条，成功${successRows.length}条，失败${failedRows.length}条，生成告警${generatedAlarms}条，恢复告警${recoveredAlarms}条${idempotencyKey ? `，幂等键: ${idempotencyKey}` : ''}`,
+        details: `导入CSV文件"${fileName}"，共${rows.length}条，成功${successRows.length}条，失败${failedRows.length}条，生成告警${generatedAlarms}条，恢复告警${recoveredAlarms}条，应用校准修正${calibrationCount.count}条${idempotencyKey ? `，幂等键: ${idempotencyKey}` : ''}`,
         importBatchId: batch.id,
       });
     });

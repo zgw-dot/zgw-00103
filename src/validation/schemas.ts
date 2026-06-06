@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DeviceStatus, AlarmStatus, BatchStatus, RowStatus, RemarkStatus, EscalationRuleScope, EscalationRuleStatus, EscalationTicketStatus } from '../types';
+import { DeviceStatus, AlarmStatus, BatchStatus, RowStatus, RemarkStatus, EscalationRuleScope, EscalationRuleStatus, EscalationTicketStatus, CalibrationPlanStatus } from '../types';
 import { getTestUsers } from '../domain/rules/authRules';
 
 export const createDeviceSchema = z.object({
@@ -307,3 +307,68 @@ export type EscalationRuleIdInput = z.infer<typeof escalationRuleIdSchema>;
 export type EscalationTicketIdInput = z.infer<typeof escalationTicketIdSchema>;
 export type EscalationTicketClaimInput = z.infer<typeof escalationTicketClaimSchema>;
 export type EscalationFiltersInput = z.infer<typeof escalationFiltersSchema>;
+
+const VALID_CALIBRATION_OPERATORS = getTestUsers().map(u => u.id);
+
+export const createCalibrationPlanSchema = z.object({
+  deviceId: z.string().min(1, '设备ID不能为空'),
+  offsetValue: z.coerce.number().refine(
+    (v) => !isNaN(v) && v >= -50 && v <= 50,
+    { message: '偏移值必须是-50到50之间的有效数字' }
+  ),
+  effectiveStartTime: z.coerce.number().refine(
+    (v) => !isNaN(v) && v > 946656000000 && v < 4102444800000,
+    { message: '生效开始时间必须是有效的时间戳（毫秒）' }
+  ),
+  effectiveEndTime: z.coerce.number().optional().refine(
+    (v) => v === undefined || v === null || (!isNaN(v) && v > 946656000000 && v < 4102444800000),
+    { message: '生效结束时间必须是有效的时间戳（毫秒）' }
+  ),
+  reason: z.string().min(1, '校准原因不能为空').max(500, '校准原因不能超过500字符'),
+  personInCharge: z.string().refine(
+    (val) => VALID_CALIBRATION_OPERATORS.includes(val),
+    { message: `负责人必须是已知用户: ${VALID_CALIBRATION_OPERATORS.join(', ')}` }
+  ),
+  operator: z.string().min(1, '操作人不能为空'),
+}).refine(
+  (data) => {
+    if (data.effectiveEndTime !== undefined && data.effectiveEndTime !== null) {
+      return data.effectiveStartTime < data.effectiveEndTime;
+    }
+    return true;
+  },
+  { message: '生效开始时间必须早于生效结束时间', path: ['effectiveStartTime'] }
+);
+
+export const calibrationPlanIdSchema = z.object({
+  id: z.string().min(1, '校准计划ID不能为空'),
+});
+
+export const calibrationFiltersSchema = z.object({
+  planStatus: z.enum([
+    CalibrationPlanStatus.ACTIVE,
+    CalibrationPlanStatus.INACTIVE,
+    CalibrationPlanStatus.REVOKED,
+  ]).optional(),
+  deviceId: z.string().optional(),
+  storeId: z.string().optional(),
+  startTime: z.coerce.number().optional(),
+  endTime: z.coerce.number().optional(),
+  format: z.enum(['csv', 'json']).default('csv'),
+  page: z.coerce.number().int().positive().optional().default(1),
+  pageSize: z.coerce.number().int().positive().max(500).optional().default(50),
+});
+
+export const calibrationDeactivateSchema = z.object({
+  operator: z.string().min(1, '操作人不能为空'),
+});
+
+export const calibrationRevokeSchema = z.object({
+  operator: z.string().min(1, '操作人不能为空'),
+});
+
+export type CreateCalibrationPlanInput = z.infer<typeof createCalibrationPlanSchema>;
+export type CalibrationPlanIdInput = z.infer<typeof calibrationPlanIdSchema>;
+export type CalibrationFiltersInput = z.infer<typeof calibrationFiltersSchema>;
+export type CalibrationDeactivateInput = z.infer<typeof calibrationDeactivateSchema>;
+export type CalibrationRevokeInput = z.infer<typeof calibrationRevokeSchema>;

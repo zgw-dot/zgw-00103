@@ -1,10 +1,10 @@
 import { UnauthorizedError } from '../../utils/errors';
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['alarm_acknowledge', 'alarm_close', 'device_manage', 'threshold_manage', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks', 'manage_escalation_rules', 'view_escalation', 'claim_escalation_ticket', 'export_escalation'],
-  manager: ['alarm_acknowledge', 'alarm_close', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks', 'manage_escalation_rules', 'view_escalation', 'claim_escalation_ticket', 'export_escalation'],
-  operator: ['import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'view_escalation', 'claim_escalation_ticket', 'export_escalation'],
-  viewer: ['export_audit', 'view_batches', 'export_batches', 'view_escalation', 'export_escalation'],
+  admin: ['alarm_acknowledge', 'alarm_close', 'device_manage', 'threshold_manage', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks', 'manage_escalation_rules', 'view_escalation', 'claim_escalation_ticket', 'export_escalation', 'manage_calibration_plans', 'view_calibration_plans', 'export_calibration'],
+  manager: ['alarm_acknowledge', 'alarm_close', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks', 'manage_escalation_rules', 'view_escalation', 'claim_escalation_ticket', 'export_escalation', 'manage_calibration_plans', 'view_calibration_plans', 'export_calibration'],
+  operator: ['import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'view_escalation', 'claim_escalation_ticket', 'export_escalation', 'view_calibration_plans', 'export_calibration'],
+  viewer: ['export_audit', 'view_batches', 'export_batches', 'view_escalation', 'export_escalation', 'view_calibration_plans', 'export_calibration'],
 };
 
 const USER_ROLES: Record<string, string[]> = {
@@ -94,6 +94,18 @@ export function checkClaimEscalationTicketPermission(userId: string): void {
 
 export function checkExportEscalationPermission(userId: string): void {
   checkPermission(userId, 'export_escalation');
+}
+
+export function checkManageCalibrationPlansPermission(userId: string): void {
+  checkPermission(userId, 'manage_calibration_plans');
+}
+
+export function checkViewCalibrationPlansPermission(userId: string): void {
+  checkPermission(userId, 'view_calibration_plans');
+}
+
+export function checkExportCalibrationPermission(userId: string): void {
+  checkPermission(userId, 'export_calibration');
 }
 
 export function getAllRoles(): string[] {
