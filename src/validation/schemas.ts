@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DeviceStatus, AlarmStatus, BatchStatus, RowStatus, RemarkStatus } from '../types';
+import { DeviceStatus, AlarmStatus, BatchStatus, RowStatus, RemarkStatus, EscalationRuleScope, EscalationRuleStatus, EscalationTicketStatus } from '../types';
 import { getTestUsers } from '../domain/rules/authRules';
 
 export const createDeviceSchema = z.object({
@@ -227,3 +227,83 @@ export type BatchDetailFiltersInput = z.infer<typeof batchDetailSchema>;
 export type UpsertRemarkInput = z.infer<typeof upsertRemarkSchema>;
 export type RemarkRowParamInput = z.infer<typeof remarkRowParamSchema>;
 export type RemarkFiltersInput = z.infer<typeof remarkFiltersSchema>;
+
+const VALID_ESCALATION_ASSIGNEES = getTestUsers().map(u => u.id);
+
+export const createEscalationRuleSchema = z.object({
+  name: z.string().min(1, '规则名称不能为空').max(100, '规则名称不能超过100字符'),
+  scope: z.enum([EscalationRuleScope.DEFAULT, EscalationRuleScope.STORE, EscalationRuleScope.DEVICE], {
+    required_error: '必须指定规则范围',
+  }),
+  storeId: z.string().optional(),
+  deviceId: z.string().optional(),
+  acknowledgeTimeoutSeconds: z.coerce.number().int().positive('确认时限必须是正整数'),
+  assigneeUserId: z.string().refine(
+    (val) => VALID_ESCALATION_ASSIGNEES.includes(val),
+    { message: `处理人必须是已知用户: ${VALID_ESCALATION_ASSIGNEES.join(', ')}` }
+  ),
+  operator: z.string().min(1, '操作人不能为空'),
+}).refine(
+  (data) => {
+    if (data.scope === EscalationRuleScope.STORE && !data.storeId) {
+      return false;
+    }
+    return true;
+  },
+  { message: '门店范围必须指定门店ID', path: ['storeId'] }
+).refine(
+  (data) => {
+    if (data.scope === EscalationRuleScope.DEVICE && !data.deviceId) {
+      return false;
+    }
+    return true;
+  },
+  { message: '设备范围必须指定设备ID', path: ['deviceId'] }
+);
+
+export const escalationRuleIdSchema = z.object({
+  id: z.string().min(1, '规则ID不能为空'),
+});
+
+export const escalationTicketIdSchema = z.object({
+  id: z.string().min(1, '升级单ID不能为空'),
+});
+
+export const escalationTicketClaimSchema = z.object({
+  operator: z.string().min(1, '操作人不能为空'),
+});
+
+export const processOverdueSchema = z.object({
+  operator: z.string().min(1, '操作人不能为空'),
+  currentTime: z.coerce.number().optional(),
+});
+
+export const escalationFiltersSchema = z.object({
+  ruleStatus: z.enum([
+    EscalationRuleStatus.ACTIVE,
+    EscalationRuleStatus.INACTIVE,
+    EscalationRuleStatus.REVOKED,
+  ]).optional(),
+  ticketStatus: z.enum([
+    EscalationTicketStatus.PENDING,
+    EscalationTicketStatus.CLAIMED,
+    EscalationTicketStatus.RESOLVED,
+  ]).optional(),
+  assigneeUserId: z.string().optional(),
+  claimedBy: z.string().optional(),
+  ruleId: z.string().optional(),
+  storeId: z.string().optional(),
+  deviceId: z.string().optional(),
+  alarmId: z.string().optional(),
+  startTime: z.coerce.number().optional(),
+  endTime: z.coerce.number().optional(),
+  format: z.enum(['csv', 'json']).default('csv'),
+  page: z.coerce.number().int().positive().optional().default(1),
+  pageSize: z.coerce.number().int().positive().max(500).optional().default(50),
+});
+
+export type CreateEscalationRuleInput = z.infer<typeof createEscalationRuleSchema>;
+export type EscalationRuleIdInput = z.infer<typeof escalationRuleIdSchema>;
+export type EscalationTicketIdInput = z.infer<typeof escalationTicketIdSchema>;
+export type EscalationTicketClaimInput = z.infer<typeof escalationTicketClaimSchema>;
+export type EscalationFiltersInput = z.infer<typeof escalationFiltersSchema>;

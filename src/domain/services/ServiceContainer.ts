@@ -8,6 +8,8 @@ import {
   BatchRowResultRepository,
   IdempotencyKeyRepository,
   BatchRowRemarkRepository,
+  EscalationRuleRepository,
+  EscalationTicketRepository,
 } from '../../storage/repositories';
 import { getDatabase } from '../../storage/database';
 import { DeviceService } from './DeviceService';
@@ -15,6 +17,7 @@ import { ThresholdService } from './ThresholdService';
 import { AlarmService } from './AlarmService';
 import { ReadingImportService } from './ReadingImportService';
 import { AuditService } from './AuditService';
+import { EscalationService } from './EscalationService';
 
 export class ServiceContainer {
   readonly deviceRepo: DeviceRepository;
@@ -26,12 +29,15 @@ export class ServiceContainer {
   readonly batchRowResultRepo: BatchRowResultRepository;
   readonly idempotencyKeyRepo: IdempotencyKeyRepository;
   readonly batchRowRemarkRepo: BatchRowRemarkRepository;
+  readonly escalationRuleRepo: EscalationRuleRepository;
+  readonly escalationTicketRepo: EscalationTicketRepository;
 
   readonly deviceService: DeviceService;
   readonly thresholdService: ThresholdService;
   readonly alarmService: AlarmService;
   readonly readingImportService: ReadingImportService;
   readonly auditService: AuditService;
+  readonly escalationService: EscalationService;
 
   private static instance: ServiceContainer | null = null;
   private static initPromise: Promise<ServiceContainer> | null = null;
@@ -46,6 +52,8 @@ export class ServiceContainer {
     this.batchRowResultRepo = new BatchRowResultRepository();
     this.idempotencyKeyRepo = new IdempotencyKeyRepository();
     this.batchRowRemarkRepo = new BatchRowRemarkRepository();
+    this.escalationRuleRepo = new EscalationRuleRepository();
+    this.escalationTicketRepo = new EscalationTicketRepository();
 
     this.deviceService = new DeviceService(this.deviceRepo, this.auditRepo);
     this.thresholdService = new ThresholdService(this.thresholdRepo, this.auditRepo, this.deviceRepo);
@@ -63,6 +71,13 @@ export class ServiceContainer {
       this.idempotencyKeyRepo
     );
     this.auditService = new AuditService(this.auditRepo);
+    this.escalationService = new EscalationService(
+      this.escalationRuleRepo,
+      this.escalationTicketRepo,
+      this.alarmRepo,
+      this.deviceRepo,
+      this.auditRepo
+    );
   }
 
   static async getInstance(): Promise<ServiceContainer> {

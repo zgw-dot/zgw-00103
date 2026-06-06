@@ -2,10 +2,10 @@ import express from 'express';
 import { config } from './config';
 import logger from './utils/logger';
 import { closeDatabase } from './storage/database';
-import { devicesRouter, thresholdsRouter, alarmsRouter, readingsRouter, auditRouter } from './api';
+import { devicesRouter, thresholdsRouter, alarmsRouter, readingsRouter, auditRouter, escalationRouter } from './api';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { getTestUsers } from './domain/rules';
-import { initServices } from './domain/services';
+import { initServices, ServiceContainer } from './domain/services';
 
 const app = express();
 
@@ -45,6 +45,7 @@ app.use('/api/thresholds', thresholdsRouter);
 app.use('/api/alarms', alarmsRouter);
 app.use('/api/readings', readingsRouter);
 app.use('/api/audit', auditRouter);
+app.use('/api/escalation', escalationRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -54,6 +55,8 @@ async function startServer() {
     logger.info('Initializing database and services...');
     await initServices();
     logger.info('Services initialized successfully');
+
+    let escalationCheckInterval: NodeJS.Timeout | null = null;
 
     const server = app.listen(config.port, () => {
       logger.info(`Server started on port ${config.port}`);
@@ -71,16 +74,38 @@ async function startServer() {
       logger.info('  GET  /api/readings');
       logger.info('  GET  /api/audit/logs');
       logger.info('  GET  /api/audit/export');
+      logger.info('  CRUD /api/escalation/rules');
+      logger.info('  POST /api/escalation/rules/:id/deactivate');
+      logger.info('  POST /api/escalation/rules/:id/revoke');
+      logger.info('  GET  /api/escalation/tickets');
+      logger.info('  POST /api/escalation/tickets/:id/claim');
+      logger.info('  GET  /api/escalation/export');
+      logger.info('  POST /api/escalation/process-overdue');
       logger.info('');
       logger.info('Test users (use X-User-Id header):');
       logger.info('  admin         - 全部权限');
-      logger.info('  manager_zhang - 告警确认/关闭、导入、导出');
-      logger.info('  operator_li   - 导入、导出');
-      logger.info('  viewer_wang   - 导出');
+      logger.info('  manager_zhang - 告警确认/关闭、导入、导出、管理升级规则');
+      logger.info('  operator_li   - 导入、导出、查看升级、领取派单');
+      logger.info('  viewer_wang   - 导出、查看升级');
     });
+
+    const services = ServiceContainer.getInstanceSync();
+    escalationCheckInterval = setInterval(() => {
+      try {
+        const createdCount = services.escalationService.processOverdueAlarms();
+        if (createdCount > 0) {
+          logger.info(`Escalation check: created ${createdCount} escalation tickets`);
+        }
+      } catch (error) {
+        logger.error('Escalation check failed', error);
+      }
+    }, 60000);
 
     const shutdown = () => {
       logger.info('Shutting down server...');
+      if (escalationCheckInterval) {
+        clearInterval(escalationCheckInterval);
+      }
       server.close(() => {
         closeDatabase();
         logger.info('Server stopped');

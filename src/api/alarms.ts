@@ -11,9 +11,10 @@ router.get(
   async (req: Request, res: Response<ApiResponse>, next: NextFunction) => {
     try {
       const services = ServiceContainer.getInstanceSync();
-      const { alarmService } = services;
+      const { alarmService, escalationService } = services;
       const alarm = alarmService.getAlarm(req.params.id);
-      res.json({ success: true, data: alarm });
+      const enrichedAlarm = escalationService.enrichAlarmWithEscalation(alarm);
+      res.json({ success: true, data: enrichedAlarm });
     } catch (error) {
       next(error);
     }
@@ -26,9 +27,16 @@ router.get(
   async (req: Request, res: Response<ApiResponse>, next: NextFunction) => {
     try {
       const services = ServiceContainer.getInstanceSync();
-      const { alarmService } = services;
+      const { alarmService, escalationService } = services;
       const result = alarmService.listAlarms(req.query as any);
-      res.json({ success: true, data: result });
+      const enrichedItems = escalationService.enrichAlarmsWithEscalation(result.items);
+      res.json({
+        success: true,
+        data: {
+          ...result,
+          items: enrichedItems,
+        }
+      });
     } catch (error) {
       next(error);
     }

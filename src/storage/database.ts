@@ -169,6 +169,43 @@ function initializeTables(db: Database): void {
       UNIQUE(import_batch_id, row_index)
     )`,
 
+    `CREATE TABLE IF NOT EXISTS escalation_rules (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      store_id TEXT,
+      device_id TEXT,
+      acknowledge_timeout_seconds INTEGER NOT NULL,
+      assignee_user_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      deactivated_at INTEGER,
+      deactivated_by TEXT,
+      revoked_at INTEGER,
+      revoked_by TEXT
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS escalation_tickets (
+      id TEXT PRIMARY KEY,
+      alarm_id TEXT NOT NULL,
+      rule_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      assignee_user_id TEXT NOT NULL,
+      claimed_by TEXT,
+      claimed_at INTEGER,
+      escalated_at INTEGER NOT NULL,
+      resolved_at INTEGER,
+      resolved_by TEXT,
+      resolution_note TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (alarm_id) REFERENCES alarms(id),
+      FOREIGN KEY (rule_id) REFERENCES escalation_rules(id),
+      UNIQUE(alarm_id)
+    )`,
+
     `CREATE INDEX IF NOT EXISTS idx_alarms_device_status ON alarms(device_id, status)`,
     `CREATE INDEX IF NOT EXISTS idx_alarms_reading_time ON alarms(reading_time)`,
     `CREATE INDEX IF NOT EXISTS idx_readings_device_time ON temperature_readings(device_id, reading_time)`,
@@ -183,6 +220,13 @@ function initializeTables(db: Database): void {
     `CREATE INDEX IF NOT EXISTS idx_idempotency_keys_operator ON idempotency_keys(operator)`,
     `CREATE INDEX IF NOT EXISTS idx_batch_row_remarks_batch ON batch_row_remarks(import_batch_id)`,
     `CREATE INDEX IF NOT EXISTS idx_batch_row_remarks_batch_row ON batch_row_remarks(import_batch_id, row_index)`,
+    `CREATE INDEX IF NOT EXISTS idx_escalation_rules_scope ON escalation_rules(scope, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_escalation_rules_store ON escalation_rules(store_id, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_escalation_rules_device ON escalation_rules(device_id, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_escalation_tickets_alarm ON escalation_tickets(alarm_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_escalation_tickets_status ON escalation_tickets(status)`,
+    `CREATE INDEX IF NOT EXISTS idx_escalation_tickets_assignee ON escalation_tickets(assignee_user_id, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_escalation_tickets_rule ON escalation_tickets(rule_id)`,
   ];
 
   for (const sql of createTables) {

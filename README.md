@@ -197,6 +197,77 @@ open → acknowledged → recovered → closed
 - ❌ 重复确认已确认告警 → 409 状态不允许
 - ❌ 关闭已关闭告警 → 409 状态不允许
 
+### 5. 告警升级与值班派单
+
+当 `open` 告警超过配置的确认时限后，系统会自动按门店或设备规则生成升级单，分配给值班处理人。
+
+#### 5.1 升级规则体系（三级覆盖）
+
+优先级从高到低：
+1. **设备级规则**: 针对单个设备的特殊配置
+2. **门店级规则**: 针对某个门店的统一配置
+3. **系统默认规则**: 全局默认配置
+
+每个范围内只能有一个 `active` 状态的规则。
+
+#### 5.2 规则状态
+
+- `active`: 生效中
+- `inactive`: 已停用（可重新激活）
+- `revoked`: 已撤销（**不可恢复，历史记录保留**）
+
+#### 5.3 升级单状态
+
+- `pending`: 待领取
+- `claimed`: 已领取
+- `resolved`: 已解决
+
+#### 5.4 权限控制
+
+| 角色 | 权限 |
+|------|------|
+| `admin` / `manager` | 创建升级规则、停用规则、撤销规则、查看升级、领取派单、导出升级数据 |
+| `operator` | 查看升级、领取派单、导出升级数据 |
+| `viewer` | 查看升级、导出升级数据 |
+
+**权限边界**：
+- 👁️ `viewer`: 只能查看规则和派单，不能修改
+- 📥 `operator`: 可以领取派单，但不能管理规则
+- 🔧 `manager`/`admin`: 可以管理规则（创建、停用、撤销）和领取派单
+- ❌ 撤销规则不会删除历史升级记录，只会影响新的告警升级
+
+#### 5.5 自动升级机制
+
+系统每 60 秒自动检测超时告警：
+1. 查找所有 `open` 状态且未确认的告警
+2. 按优先级匹配升级规则（设备 > 门店 > 默认）
+3. 如果告警创建时间 + 确认时限 ≤ 当前时间，生成升级单
+4. 升级单自动派发给规则配置的处理人
+5. 记录审计日志
+
+**防止重复升级**：
+- 每个告警只能生成一个升级单（`UNIQUE(alarm_id)`）
+- 已停用设备的告警不会自动升级
+
+#### 5.6 规则校验（创建时的检查）
+
+| 校验项 | 错误响应 |
+|--------|---------|
+| 重复规则（同一范围已存在 active 规则） | 409 CONFLICT |
+| 确认时限 ≤ 0 | 400 VALIDATION_ERROR |
+| 处理人不存在 | 400 VALIDATION_ERROR |
+| 设备不存在（设备级规则） | 400 VALIDATION_ERROR |
+| 设备已停用（设备级规则） | 400 VALIDATION_ERROR |
+| 门店级规则未指定 storeId | 400 VALIDATION_ERROR |
+| 设备级规则未指定 deviceId | 400 VALIDATION_ERROR |
+
+#### 5.7 升级状态展示
+
+升级状态会自动同步到：
+- **告警详情**：包含 `escalationStatus`、`escalationTicketId`、`escalationRuleName` 等字段
+- **告警列表**：每条告警都包含升级状态信息
+- **审计日志**：记录规则创建、停用、撤销、升级单生成、领取等操作
+
 ### 3.2 批次复盘详情与失败行处置进度
 
 **按导入批次查看完整复盘信息**：
@@ -972,6 +1043,151 @@ GET /api/audit/export?format=csv&storeId=STORE-001
 ```
 
 支持 `format=csv` 或 `format=json`
+
+---
+
+### 告警升级与值班派单
+
+#### 创建升级规则
+```http
+POST /api/escalation/rules
+Content-Type: application/json
+X-User-Id: manager_zhang
+
+{
+  "name": "门店超时升级规则",
+  "scope": "store",
+  "storeId": "STORE-001",
+  "acknowledgeTimeoutSeconds": 300,
+  "assigneeUserId": "operator_li",
+  "operator": "manager_zhang"
+}
+```
+
+**scope 说明**：
+- `default`: 系统默认规则
+- `store`: 门店级规则（需指定 `storeId`）
+- `device`: 设备级规则（需指定 `deviceId`）
+
+#### 查询升级规则列表
+```http
+GET /api/escalation/rules?ruleStatus=active&page=1&pageSize=50
+X-User-Id: viewer_wang
+```
+
+**筛选参数**：
+- `ruleStatus`: 规则状态 (active/inactive/revoked)
+- `storeId`: 门店ID
+- `deviceId`: 设备ID
+
+#### 查询单个升级规则
+```http
+GET /api/escalation/rules/{ruleId}
+```
+
+#### 停用升级规则
+```http
+POST /api/escalation/rules/{ruleId}/deactivate
+Content-Type: application/json
+X-User-Id: manager_zhang
+
+{
+  "operator": "manager_zhang"
+}
+```
+
+#### 撤销升级规则（不可恢复，历史记录保留）
+```http
+POST /api/escalation/rules/{ruleId}/revoke
+Content-Type: application/json
+X-User-Id: manager_zhang
+
+{
+  "operator": "manager_zhang"
+}
+```
+
+> **重要**：撤销规则不会删除已生成的历史升级单，只会阻止新的告警使用该规则升级。
+
+#### 查询升级单列表
+```http
+GET /api/escalation/tickets?ticketStatus=pending&assigneeUserId=operator_li&page=1&pageSize=50
+X-User-Id: operator_li
+```
+
+**筛选参数**：
+- `ticketStatus`: 升级单状态 (pending/claimed/resolved)
+- `assigneeUserId`: 指派处理人
+- `claimedBy`: 领取人
+- `ruleId`: 关联规则ID
+- `alarmId`: 关联告警ID
+- `startTime`/`endTime`: 升级时间范围
+
+#### 查询单个升级单
+```http
+GET /api/escalation/tickets/{ticketId}
+X-User-Id: operator_li
+```
+
+#### 根据告警ID查询升级单
+```http
+GET /api/escalation/tickets/alarm/{alarmId}
+X-User-Id: operator_li
+```
+
+#### 领取升级单
+```http
+POST /api/escalation/tickets/{ticketId}/claim
+Content-Type: application/json
+X-User-Id: operator_li
+
+{
+  "operator": "operator_li"
+}
+```
+
+#### 升级单统计
+```http
+GET /api/escalation/stats/counts
+X-User-Id: viewer_wang
+```
+
+**响应示例**：
+```json
+{
+  "success": true,
+  "data": {
+    "pending": 3,
+    "claimed": 5,
+    "resolved": 10
+  }
+}
+```
+
+#### 手动触发超时处理
+```http
+POST /api/escalation/process-overdue
+Content-Type: application/json
+X-User-Id: admin
+
+{
+  "currentTime": 1705305600000
+}
+```
+
+> `currentTime` 为可选参数，用于测试时指定当前时间。系统默认每 60 秒自动执行一次。
+
+#### 导出升级数据
+```http
+GET /api/escalation/export?format=csv&ticketStatus=claimed
+X-User-Id: operator_li
+```
+
+支持 `format=csv` 或 `format=json`，筛选参数与列表查询一致。
+
+**CSV 导出包含字段**：升级单ID、告警ID、规则名称、状态、指派处理人、领取人、升级时间、领取时间、解决时间、解决备注、设备ID、设备名称、门店ID、门店名称、告警类型、告警温度、告警阈值、创建时间
+
+**JSON 导出包含**：完整的升级单信息、关联规则信息、关联告警信息、关联设备信息
 
 ---
 

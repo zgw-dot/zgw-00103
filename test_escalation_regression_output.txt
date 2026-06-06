@@ -1,0 +1,1332 @@
+
+============================================================
+📋 SETUP: Creating test devices and thresholds
+============================================================
+"Initialize test environment"
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/devices
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "id": "ESC-DEV001",
+  "name": "Escalation Test Device",
+  "storeId": "STORE-ESC01",
+  "storeName": "Escalation Test Store",
+  "status": "active"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "ESC-DEV001",
+    "name": "Escalation Test Device",
+    "storeId": "STORE-ESC01",
+    "storeName": "Escalation Test Store",
+    "status": "active",
+    "createdAt": 1780748985906,
+    "updatedAt": 1780748985906
+  },
+  "message": "设备创建成功"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/devices
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "id": "ESC-DEV002",
+  "name": "Escalation Test Device 2",
+  "storeId": "STORE-ESC01",
+  "storeName": "Escalation Test Store",
+  "status": "active"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "ESC-DEV002",
+    "name": "Escalation Test Device 2",
+    "storeId": "STORE-ESC01",
+    "storeName": "Escalation Test Store",
+    "status": "active",
+    "createdAt": 1780748985946,
+    "updatedAt": 1780748985946
+  },
+  "message": "设备创建成功"
+}
+
+
+------------------------------------------------------------
+>>> PUT http://localhost:3006/api/thresholds/device/ESC-DEV001
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "minTemp": -25,
+  "maxTemp": -15
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "deviceId": "ESC-DEV001",
+    "storeId": null,
+    "isDefault": false,
+    "minTemp": -25,
+    "maxTemp": -15,
+    "id": "th-e2fa73f0-b18d-4b5b-866e-cc02aca62d60",
+    "createdAt": 1780748985971,
+    "updatedAt": 1780748985971
+  },
+  "message": "设备阈值设置成功"
+}
+
+
+------------------------------------------------------------
+>>> PUT http://localhost:3006/api/thresholds/device/ESC-DEV002
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "minTemp": -25,
+  "maxTemp": -15
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "deviceId": "ESC-DEV002",
+    "storeId": null,
+    "isDefault": false,
+    "minTemp": -25,
+    "maxTemp": -15,
+    "id": "th-d80424a6-748a-4457-9b2a-8547676a1648",
+    "createdAt": 1780748985992,
+    "updatedAt": 1780748985992
+  },
+  "message": "设备阈值设置成功"
+}
+
+
+============================================================
+📋 TEST 1: Duplicate Rule Detection
+============================================================
+"Same scope should return 409 Conflict"
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "default",
+  "isDefault": true,
+  "acknowledgeTimeoutMinutes": 30,
+  "assigneeUserId": "manager_zhang"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "scope": "default",
+    "storeId": null,
+    "deviceId": null,
+    "isDefault": true,
+    "acknowledgeTimeoutMinutes": 30,
+    "assigneeUserId": "manager_zhang",
+    "status": "active",
+    "createdBy": "admin",
+    "id": "esr-f74d8a97-29cb-465a-90fd-5d3bcd9120e7",
+    "createdAt": 1780748986024,
+    "updatedAt": 1780748986024
+  },
+  "message": "升级规则创建成功"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "default",
+  "isDefault": true,
+  "acknowledgeTimeoutMinutes": 60,
+  "assigneeUserId": "operator_li"
+}
+
+
+<<< Status: 409
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "CONFLICT",
+  "message": "默认已存在生效的升级规则，无法重复创建"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "store",
+  "storeId": "STORE-ESC01",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": 15,
+  "assigneeUserId": "operator_li"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "scope": "store",
+    "storeId": "STORE-ESC01",
+    "deviceId": null,
+    "isDefault": false,
+    "acknowledgeTimeoutMinutes": 15,
+    "assigneeUserId": "operator_li",
+    "status": "active",
+    "createdBy": "admin",
+    "id": "esr-26b14805-23a3-4e60-a5bc-5b883844dc6d",
+    "createdAt": 1780748986081,
+    "updatedAt": 1780748986081
+  },
+  "message": "升级规则创建成功"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "store",
+  "storeId": "STORE-ESC01",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": 20,
+  "assigneeUserId": "manager_zhang"
+}
+
+
+<<< Status: 409
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "CONFLICT",
+  "message": "门店\"STORE-ESC01\"已存在生效的升级规则，无法重复创建"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "device",
+  "deviceId": "ESC-DEV001",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": 5,
+  "assigneeUserId": "operator_li"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "scope": "device",
+    "storeId": null,
+    "deviceId": "ESC-DEV001",
+    "isDefault": false,
+    "acknowledgeTimeoutMinutes": 5,
+    "assigneeUserId": "operator_li",
+    "status": "active",
+    "createdBy": "admin",
+    "id": "esr-4b2f13b1-7640-44c6-b262-4bb9db16e578",
+    "createdAt": 1780748986119,
+    "updatedAt": 1780748986119
+  },
+  "message": "升级规则创建成功"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "device",
+  "deviceId": "ESC-DEV001",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": 10,
+  "assigneeUserId": "manager_zhang"
+}
+
+
+<<< Status: 409
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "CONFLICT",
+  "message": "设备\"ESC-DEV001\"已存在生效的升级规则，无法重复创建"
+}
+
+
+============================================================
+📋 TEST 2: Invalid Timeout Detection
+============================================================
+"Timeout must be 1-10080 minutes"
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "store",
+  "storeId": "STORE-ESC02",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": 0,
+  "assigneeUserId": "manager_zhang"
+}
+
+
+<<< Status: 400
+------------------------------------------------------------
+{
+  "success": false,
+  "message": "确认时限必须是1-10080分钟（1周）之间的整数，当前值：0",
+  "errors": [
+    "确认时限必须是1-10080分钟（1周）之间的整数，当前值：0"
+  ]
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "store",
+  "storeId": "STORE-ESC02",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": -5,
+  "assigneeUserId": "manager_zhang"
+}
+
+
+<<< Status: 400
+------------------------------------------------------------
+{
+  "success": false,
+  "message": "确认时限必须是1-10080分钟（1周）之间的整数，当前值：-5",
+  "errors": [
+    "确认时限必须是1-10080分钟（1周）之间的整数，当前值：-5"
+  ]
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "store",
+  "storeId": "STORE-ESC02",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": 10081,
+  "assigneeUserId": "manager_zhang"
+}
+
+
+<<< Status: 400
+------------------------------------------------------------
+{
+  "success": false,
+  "message": "确认时限必须是1-10080分钟（1周）之间的整数，当前值：10081",
+  "errors": [
+    "确认时限必须是1-10080分钟（1周）之间的整数，当前值：10081"
+  ]
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "store",
+  "storeId": "STORE-ESC02",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": 0.5,
+  "assigneeUserId": "manager_zhang"
+}
+
+
+<<< Status: 400
+------------------------------------------------------------
+{
+  "success": false,
+  "message": "acknowledgeTimeoutMinutes: Expected integer, received float",
+  "errors": [
+    "acknowledgeTimeoutMinutes: Expected integer, received float"
+  ]
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "store",
+  "storeId": "STORE-ESC02",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": 1,
+  "assigneeUserId": "manager_zhang"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "scope": "store",
+    "storeId": "STORE-ESC02",
+    "deviceId": null,
+    "isDefault": false,
+    "acknowledgeTimeoutMinutes": 1,
+    "assigneeUserId": "manager_zhang",
+    "status": "active",
+    "createdBy": "admin",
+    "id": "esr-98957ce9-6366-410c-a0dd-57316f039c2d",
+    "createdAt": 1780748986187,
+    "updatedAt": 1780748986187
+  },
+  "message": "升级规则创建成功"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "device",
+  "deviceId": "ESC-DEV002",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": 10080,
+  "assigneeUserId": "operator_li"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "scope": "device",
+    "storeId": null,
+    "deviceId": "ESC-DEV002",
+    "isDefault": false,
+    "acknowledgeTimeoutMinutes": 10080,
+    "assigneeUserId": "operator_li",
+    "status": "active",
+    "createdBy": "admin",
+    "id": "esr-a02d191a-d5b4-4d63-b760-1f0a1ba496cd",
+    "createdAt": 1780748986202,
+    "updatedAt": 1780748986202
+  },
+  "message": "升级规则创建成功"
+}
+
+
+============================================================
+📋 TEST 3: Invalid Assignee Detection
+============================================================
+"Assignee must be known user"
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "store",
+  "storeId": "STORE-ESC03",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": 30,
+  "assigneeUserId": "unknown_user_123"
+}
+
+
+<<< Status: 400
+------------------------------------------------------------
+{
+  "success": false,
+  "message": "处理人\"unknown_user_123\"不存在，有效处理人：admin, manager_zhang, operator_li, viewer_wang",
+  "errors": [
+    "处理人\"unknown_user_123\"不存在，有效处理人：admin, manager_zhang, operator_li, viewer_wang"
+  ]
+}
+
+
+============================================================
+📋 TEST 4: Permission Boundaries
+============================================================
+"viewer and operator cannot manage rules"
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "store",
+  "storeId": "STORE-ESC04",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": 30,
+  "assigneeUserId": "manager_zhang"
+}
+
+
+<<< Status: 403
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "UNAUTHORIZED",
+  "message": "用户\"viewer_wang\"没有\"manage_escalation_rules\"操作权限，请联系管理员授权"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "operator_li",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "store",
+  "storeId": "STORE-ESC04",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": 30,
+  "assigneeUserId": "manager_zhang"
+}
+
+
+<<< Status: 403
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "UNAUTHORIZED",
+  "message": "用户\"operator_li\"没有\"manage_escalation_rules\"操作权限，请联系管理员授权"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules/esr-f74d8a97-29cb-465a-90fd-5d3bcd9120e7/deactivate
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang",
+  "Content-Type": "application/json"
+}
+
+
+<<< Status: 403
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "UNAUTHORIZED",
+  "message": "用户\"viewer_wang\"没有\"manage_escalation_rules\"操作权限，请联系管理员授权"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules/esr-f74d8a97-29cb-465a-90fd-5d3bcd9120e7/revoke
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang",
+  "Content-Type": "application/json"
+}
+Body: {
+  "note": "test"
+}
+
+
+<<< Status: 403
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "UNAUTHORIZED",
+  "message": "用户\"viewer_wang\"没有\"manage_escalation_rules\"操作权限，请联系管理员授权"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/dispatches/fake-dispatch-id/claim
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang",
+  "Content-Type": "application/json"
+}
+Body: {
+  "operator": "viewer_wang"
+}
+
+
+<<< Status: 403
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "UNAUTHORIZED",
+  "message": "用户\"viewer_wang\"没有\"claim_escalation_dispatches\"操作权限，请联系管理员授权"
+}
+
+
+============================================================
+📋 TEST 5: Rule Deactivation and Revocation
+============================================================
+"Test status transitions"
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin",
+  "Content-Type": "application/json"
+}
+Body: {
+  "scope": "store",
+  "storeId": "STORE-ESC05",
+  "isDefault": false,
+  "acknowledgeTimeoutMinutes": 30,
+  "assigneeUserId": "manager_zhang"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "scope": "store",
+    "storeId": "STORE-ESC05",
+    "deviceId": null,
+    "isDefault": false,
+    "acknowledgeTimeoutMinutes": 30,
+    "assigneeUserId": "manager_zhang",
+    "status": "active",
+    "createdBy": "admin",
+    "id": "esr-3385bf5d-f498-446a-b4db-f7b5fd7e936d",
+    "createdAt": 1780748986264,
+    "updatedAt": 1780748986264
+  },
+  "message": "升级规则创建成功"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules/esr-3385bf5d-f498-446a-b4db-f7b5fd7e936d/deactivate
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "manager_zhang",
+  "Content-Type": "application/json"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "esr-3385bf5d-f498-446a-b4db-f7b5fd7e936d",
+    "scope": "store",
+    "storeId": "STORE-ESC05",
+    "deviceId": null,
+    "isDefault": false,
+    "acknowledgeTimeoutMinutes": 30,
+    "assigneeUserId": "manager_zhang",
+    "status": "inactive",
+    "createdBy": "admin",
+    "createdAt": 1780748986264,
+    "updatedAt": 1780748986286,
+    "deactivatedAt": 1780748986286,
+    "deactivatedBy": "manager_zhang",
+    "revokedAt": null,
+    "revokedBy": null,
+    "revokeNote": null
+  },
+  "message": "升级规则停用成功"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules/esr-3385bf5d-f498-446a-b4db-f7b5fd7e936d/deactivate
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "manager_zhang",
+  "Content-Type": "application/json"
+}
+
+
+<<< Status: 409
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "CONFLICT",
+  "message": "规则状态为\"inactive\"，无法停用。仅active状态的规则可以停用"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules/esr-3385bf5d-f498-446a-b4db-f7b5fd7e936d/revoke
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "manager_zhang",
+  "Content-Type": "application/json"
+}
+Body: {
+  "note": "Rule no longer needed"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "esr-3385bf5d-f498-446a-b4db-f7b5fd7e936d",
+    "scope": "store",
+    "storeId": "STORE-ESC05",
+    "deviceId": null,
+    "isDefault": false,
+    "acknowledgeTimeoutMinutes": 30,
+    "assigneeUserId": "manager_zhang",
+    "status": "revoked",
+    "createdBy": "admin",
+    "createdAt": 1780748986264,
+    "updatedAt": 1780748986333,
+    "deactivatedAt": 1780748986286,
+    "deactivatedBy": "manager_zhang",
+    "revokedAt": 1780748986333,
+    "revokedBy": "manager_zhang",
+    "revokeNote": "Rule no longer needed"
+  },
+  "message": "升级规则撤销成功"
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/rules/esr-3385bf5d-f498-446a-b4db-f7b5fd7e936d/revoke
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "manager_zhang",
+  "Content-Type": "application/json"
+}
+Body: {
+  "note": "Second revoke attempt"
+}
+
+
+<<< Status: 409
+------------------------------------------------------------
+{
+  "success": false,
+  "code": "CONFLICT",
+  "message": "规则已撤销，无法重复撤销"
+}
+
+
+============================================================
+📋 TEST 6: Timeout Triggering and Escalation Engine
+============================================================
+"Create alarm, trigger escalation"
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/readings/import
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "operator_li",
+  "Content-Type": "multipart/form-data"
+}
+Body: "[CSV File]"
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "batchId": "batch-e7601066-63ce-4eea-ae4e-3710e4fb774b",
+    "successCount": 4,
+    "failedCount": 0,
+    "errors": [],
+    "generatedAlarms": 2,
+    "recoveredAlarms": 0,
+    "status": "completed",
+    "isIdempotencyHit": false,
+    "submitCount": 1
+  },
+  "message": "导入成功，共4条"
+}
+
+
+------------------------------------------------------------
+>>> GET http://localhost:3006/api/alarms?alarmStatus=open&deviceId=ESC-DEV001
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "admin"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4",
+        "deviceId": "ESC-DEV001",
+        "type": "low_temp",
+        "threshold": -25,
+        "readingId": "rd-ad87a3cc-8054-4637-b05a-bfca25b56f33",
+        "readingTime": 1780279200000,
+        "temperature": -30,
+        "status": "open",
+        "acknowledgedAt": null,
+        "acknowledgedBy": null,
+        "recoveredAt": null,
+        "recoveredReadingId": null,
+        "recoveredTemperature": null,
+        "closedAt": null,
+        "closedBy": null,
+        "closeNote": null,
+        "createdAt": 1780748986401,
+        "updatedAt": 1780748986401,
+        "escalationStatus": null,
+        "escalationDispatchId": null,
+        "escalationAssignee": null,
+        "escalatedAt": null
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 50
+  }
+}
+
+
+------------------------------------------------------------
+>>> GET http://localhost:3006/api/alarms/al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4",
+    "deviceId": "ESC-DEV001",
+    "type": "low_temp",
+    "threshold": -25,
+    "readingId": "rd-ad87a3cc-8054-4637-b05a-bfca25b56f33",
+    "readingTime": 1780279200000,
+    "temperature": -30,
+    "status": "open",
+    "acknowledgedAt": null,
+    "acknowledgedBy": null,
+    "recoveredAt": null,
+    "recoveredReadingId": null,
+    "recoveredTemperature": null,
+    "closedAt": null,
+    "closedBy": null,
+    "closeNote": null,
+    "createdAt": 1780748986401,
+    "updatedAt": 1780748986401,
+    "escalationStatus": null,
+    "escalationDispatchId": null,
+    "escalationAssignee": null,
+    "escalatedAt": null
+  }
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/process
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "manager_zhang",
+  "Content-Type": "application/json"
+}
+Body: {
+  "operator": "manager_zhang",
+  "nowOverride": 1780749586463
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "generated": 1,
+    "alreadyEscalated": 0,
+    "processedCount": 1
+  },
+  "message": "升级处理完成，生成1条派单"
+}
+
+
+------------------------------------------------------------
+>>> GET http://localhost:3006/api/alarms/al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4",
+    "deviceId": "ESC-DEV001",
+    "type": "low_temp",
+    "threshold": -25,
+    "readingId": "rd-ad87a3cc-8054-4637-b05a-bfca25b56f33",
+    "readingTime": 1780279200000,
+    "temperature": -30,
+    "status": "open",
+    "acknowledgedAt": null,
+    "acknowledgedBy": null,
+    "recoveredAt": null,
+    "recoveredReadingId": null,
+    "recoveredTemperature": null,
+    "closedAt": null,
+    "closedBy": null,
+    "closeNote": null,
+    "createdAt": 1780748986401,
+    "updatedAt": 1780748986401,
+    "escalationStatus": "pending",
+    "escalationDispatchId": "esd-24329e54-93c0-43ce-a1a4-6ce63424344a",
+    "escalationAssignee": "operator_li",
+    "escalatedAt": 1780748986468
+  }
+}
+
+
+------------------------------------------------------------
+>>> GET http://localhost:3006/api/escalation/dispatches?alarmId=al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "esd-24329e54-93c0-43ce-a1a4-6ce63424344a",
+        "alarmId": "al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4",
+        "deviceId": "ESC-DEV001",
+        "storeId": "STORE-ESC01",
+        "ruleId": "esr-4b2f13b1-7640-44c6-b262-4bb9db16e578",
+        "ruleScope": "device",
+        "acknowledgeTimeoutMinutes": 5,
+        "assigneeUserId": "operator_li",
+        "status": "pending",
+        "alarmCreatedAt": 1780748986401,
+        "escalatedAt": 1780748986468,
+        "claimedBy": null,
+        "claimedAt": null,
+        "resolvedBy": null,
+        "resolvedAt": null,
+        "resolveNote": null,
+        "cancelledAt": null,
+        "cancelNote": null,
+        "createdAt": 1780748986469,
+        "updatedAt": 1780748986469
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 50
+  }
+}
+
+
+------------------------------------------------------------
+>>> GET http://localhost:3006/api/escalation/dispatches/esd-24329e54-93c0-43ce-a1a4-6ce63424344a
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "esd-24329e54-93c0-43ce-a1a4-6ce63424344a",
+    "alarmId": "al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4",
+    "deviceId": "ESC-DEV001",
+    "storeId": "STORE-ESC01",
+    "ruleId": "esr-4b2f13b1-7640-44c6-b262-4bb9db16e578",
+    "ruleScope": "device",
+    "acknowledgeTimeoutMinutes": 5,
+    "assigneeUserId": "operator_li",
+    "status": "pending",
+    "alarmCreatedAt": 1780748986401,
+    "escalatedAt": 1780748986468,
+    "claimedBy": null,
+    "claimedAt": null,
+    "resolvedBy": null,
+    "resolvedAt": null,
+    "resolveNote": null,
+    "cancelledAt": null,
+    "cancelNote": null,
+    "createdAt": 1780748986469,
+    "updatedAt": 1780748986469
+  }
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/dispatches/esd-24329e54-93c0-43ce-a1a4-6ce63424344a/claim
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "operator_li",
+  "Content-Type": "application/json"
+}
+Body: {
+  "operator": "operator_li"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "esd-24329e54-93c0-43ce-a1a4-6ce63424344a",
+    "alarmId": "al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4",
+    "deviceId": "ESC-DEV001",
+    "storeId": "STORE-ESC01",
+    "ruleId": "esr-4b2f13b1-7640-44c6-b262-4bb9db16e578",
+    "ruleScope": "device",
+    "acknowledgeTimeoutMinutes": 5,
+    "assigneeUserId": "operator_li",
+    "status": "claimed",
+    "alarmCreatedAt": 1780748986401,
+    "escalatedAt": 1780748986468,
+    "claimedBy": "operator_li",
+    "claimedAt": 1780748986528,
+    "resolvedBy": null,
+    "resolvedAt": null,
+    "resolveNote": null,
+    "cancelledAt": null,
+    "cancelNote": null,
+    "createdAt": 1780748986469,
+    "updatedAt": 1780748986528
+  },
+  "message": "派单领取成功"
+}
+
+
+------------------------------------------------------------
+>>> GET http://localhost:3006/api/alarms/al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4",
+    "deviceId": "ESC-DEV001",
+    "type": "low_temp",
+    "threshold": -25,
+    "readingId": "rd-ad87a3cc-8054-4637-b05a-bfca25b56f33",
+    "readingTime": 1780279200000,
+    "temperature": -30,
+    "status": "open",
+    "acknowledgedAt": null,
+    "acknowledgedBy": null,
+    "recoveredAt": null,
+    "recoveredReadingId": null,
+    "recoveredTemperature": null,
+    "closedAt": null,
+    "closedBy": null,
+    "closeNote": null,
+    "createdAt": 1780748986401,
+    "updatedAt": 1780748986401,
+    "escalationStatus": "claimed",
+    "escalationDispatchId": "esd-24329e54-93c0-43ce-a1a4-6ce63424344a",
+    "escalationAssignee": "operator_li",
+    "escalatedAt": 1780748986468
+  }
+}
+
+
+------------------------------------------------------------
+>>> POST http://localhost:3006/api/escalation/dispatches/esd-24329e54-93c0-43ce-a1a4-6ce63424344a/resolve
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "operator_li",
+  "Content-Type": "application/json"
+}
+Body: {
+  "operator": "operator_li",
+  "note": "设备已修复，温度恢复正常"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "esd-24329e54-93c0-43ce-a1a4-6ce63424344a",
+    "alarmId": "al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4",
+    "deviceId": "ESC-DEV001",
+    "storeId": "STORE-ESC01",
+    "ruleId": "esr-4b2f13b1-7640-44c6-b262-4bb9db16e578",
+    "ruleScope": "device",
+    "acknowledgeTimeoutMinutes": 5,
+    "assigneeUserId": "operator_li",
+    "status": "resolved",
+    "alarmCreatedAt": 1780748986401,
+    "escalatedAt": 1780748986468,
+    "claimedBy": "operator_li",
+    "claimedAt": 1780748986528,
+    "resolvedBy": "operator_li",
+    "resolvedAt": 1780748986601,
+    "resolveNote": "设备已修复，温度恢复正常",
+    "cancelledAt": null,
+    "cancelNote": null,
+    "createdAt": 1780748986469,
+    "updatedAt": 1780748986601
+  },
+  "message": "派单处理成功"
+}
+
+
+------------------------------------------------------------
+>>> GET http://localhost:3006/api/alarms/al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "id": "al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4",
+    "deviceId": "ESC-DEV001",
+    "type": "low_temp",
+    "threshold": -25,
+    "readingId": "rd-ad87a3cc-8054-4637-b05a-bfca25b56f33",
+    "readingTime": 1780279200000,
+    "temperature": -30,
+    "status": "open",
+    "acknowledgedAt": null,
+    "acknowledgedBy": null,
+    "recoveredAt": null,
+    "recoveredReadingId": null,
+    "recoveredTemperature": null,
+    "closedAt": null,
+    "closedBy": null,
+    "closeNote": null,
+    "createdAt": 1780748986401,
+    "updatedAt": 1780748986401,
+    "escalationStatus": "resolved",
+    "escalationDispatchId": "esd-24329e54-93c0-43ce-a1a4-6ce63424344a",
+    "escalationAssignee": "operator_li",
+    "escalatedAt": 1780748986468
+  }
+}
+
+
+============================================================
+📋 TEST 7: Export Consistency
+============================================================
+"JSON and CSV exports match filter results"
+
+------------------------------------------------------------
+>>> GET http://localhost:3006/api/escalation/dispatches?dispatchStatus=resolved
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "esd-24329e54-93c0-43ce-a1a4-6ce63424344a",
+        "alarmId": "al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4",
+        "deviceId": "ESC-DEV001",
+        "storeId": "STORE-ESC01",
+        "ruleId": "esr-4b2f13b1-7640-44c6-b262-4bb9db16e578",
+        "ruleScope": "device",
+        "acknowledgeTimeoutMinutes": 5,
+        "assigneeUserId": "operator_li",
+        "status": "resolved",
+        "alarmCreatedAt": 1780748986401,
+        "escalatedAt": 1780748986468,
+        "claimedBy": "operator_li",
+        "claimedAt": 1780748986528,
+        "resolvedBy": "operator_li",
+        "resolvedAt": 1780748986601,
+        "resolveNote": "设备已修复，温度恢复正常",
+        "cancelledAt": null,
+        "cancelNote": null,
+        "createdAt": 1780748986469,
+        "updatedAt": 1780748986601
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 50
+  }
+}
+
+
+------------------------------------------------------------
+>>> GET http://localhost:3006/api/escalation/export/dispatches?format=json&dispatchStatus=resolved
+------------------------------------------------------------
+Headers: {
+  "X-User-Id": "viewer_wang"
+}
+
+
+<<< Status: 200
+------------------------------------------------------------
+{
+  "filters": {
+    "dispatchStatus": "resolved",
+    "page": 1,
+    "pageSize": 50,
+    "format": "json"
+  },
+  "total": 1,
+  "dispatches": [
+    {
+      "id": "esd-24329e54-93c0-43ce-a1a4-6ce63424344a",
+      "alarmId": "al-02a6d4d4-cd45-4b72-afb0-7c5201948eb4",
+      "deviceId": "ESC-DEV001",
+      "storeId": "STORE-ESC01",
+      "ruleId": "esr-4b2f13b1-7640-44c6-b262-4bb9db16e578",
+      "ruleScope": "device",
+      "acknowledgeTimeoutMinutes": 5,
+      "assigneeUserId": "operator_li",
+      "status": "resolved",
+      "alarmCreatedAt": 1780748986401,
+      "escalatedAt": 1780748986468,
+      "claimedBy": "operator_li",
+      "claimedAt": 1780748986528,
+      "resolvedBy": "operator_li",
+      "resolvedAt": 1780748986601,
+      "resolveNote": "设备已修复，温度恢复正常",
+      "cancelledAt": null,
+      "cancelNote": null,
+      "createdAt": 1780748986469,
+      "updatedAt": 1780748986601
+    }
+  ],
+  "exportedAt": 1780748986650
+}

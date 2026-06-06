@@ -26,7 +26,91 @@ export enum OperationType {
   IDEMPOTENCY_HIT = 'idempotency_hit',
   IDEMPOTENCY_CONFLICT = 'idempotency_conflict',
   BATCH_ROW_REMARK_UPDATE = 'batch_row_remark_update',
-  BATCH_ROW_REMARK_CLEAR = 'batch_row_remark_clear'
+  BATCH_ROW_REMARK_CLEAR = 'batch_row_remark_clear',
+  ESCALATION_RULE_CREATE = 'escalation_rule_create',
+  ESCALATION_RULE_DEACTIVATE = 'escalation_rule_deactivate',
+  ESCALATION_RULE_REVOKE = 'escalation_rule_revoke',
+  ESCALATION_TICKET_CREATE = 'escalation_ticket_create',
+  ESCALATION_TICKET_CLAIM = 'escalation_ticket_claim'
+}
+
+export enum EscalationRuleStatus {
+  ACTIVE = 'active',
+  INACTIVE = 'inactive',
+  REVOKED = 'revoked'
+}
+
+export enum EscalationRuleScope {
+  DEFAULT = 'default',
+  STORE = 'store',
+  DEVICE = 'device'
+}
+
+export enum EscalationTicketStatus {
+  PENDING = 'pending',
+  CLAIMED = 'claimed',
+  RESOLVED = 'resolved'
+}
+
+export interface EscalationRule {
+  id: string;
+  name: string;
+  scope: EscalationRuleScope;
+  storeId: string | null;
+  deviceId: string | null;
+  acknowledgeTimeoutSeconds: number;
+  assigneeUserId: string;
+  status: EscalationRuleStatus;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  deactivatedAt?: number;
+  deactivatedBy?: string;
+  revokedAt?: number;
+  revokedBy?: string;
+}
+
+export interface EscalationTicket {
+  id: string;
+  alarmId: string;
+  ruleId: string;
+  status: EscalationTicketStatus;
+  assigneeUserId: string;
+  claimedBy?: string;
+  claimedAt?: number;
+  escalatedAt: number;
+  resolvedAt?: number;
+  resolvedBy?: string;
+  resolutionNote?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AlarmWithEscalation extends Alarm {
+  escalationStatus?: EscalationTicketStatus | null;
+  escalationTicketId?: string | null;
+  escalationRuleName?: string | null;
+  escalationAssignee?: string | null;
+  escalationClaimedBy?: string | null;
+  escalationEscalatedAt?: number | null;
+}
+
+export interface CreateEscalationRuleInput {
+  name: string;
+  scope: EscalationRuleScope;
+  storeId?: string;
+  deviceId?: string;
+  acknowledgeTimeoutSeconds: number;
+  assigneeUserId: string;
+}
+
+export interface EscalationFilters extends QueryFilters {
+  ruleStatus?: EscalationRuleStatus;
+  ticketStatus?: EscalationTicketStatus;
+  assigneeUserId?: string;
+  claimedBy?: string;
+  ruleId?: string;
+  alarmId?: string;
 }
 
 export interface Device {

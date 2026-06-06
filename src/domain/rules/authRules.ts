@@ -1,10 +1,10 @@
 import { UnauthorizedError } from '../../utils/errors';
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['alarm_acknowledge', 'alarm_close', 'device_manage', 'threshold_manage', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks'],
-  manager: ['alarm_acknowledge', 'alarm_close', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks'],
-  operator: ['import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches'],
-  viewer: ['export_audit', 'view_batches', 'export_batches'],
+  admin: ['alarm_acknowledge', 'alarm_close', 'device_manage', 'threshold_manage', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks', 'manage_escalation_rules', 'view_escalation', 'claim_escalation_ticket', 'export_escalation'],
+  manager: ['alarm_acknowledge', 'alarm_close', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks', 'manage_escalation_rules', 'view_escalation', 'claim_escalation_ticket', 'export_escalation'],
+  operator: ['import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'view_escalation', 'claim_escalation_ticket', 'export_escalation'],
+  viewer: ['export_audit', 'view_batches', 'export_batches', 'view_escalation', 'export_escalation'],
 };
 
 const USER_ROLES: Record<string, string[]> = {
@@ -78,6 +78,22 @@ export function checkExportBatchesPermission(userId: string): void {
 
 export function checkManageRowRemarksPermission(userId: string): void {
   checkPermission(userId, 'manage_row_remarks');
+}
+
+export function checkManageEscalationRulesPermission(userId: string): void {
+  checkPermission(userId, 'manage_escalation_rules');
+}
+
+export function checkViewEscalationPermission(userId: string): void {
+  checkPermission(userId, 'view_escalation');
+}
+
+export function checkClaimEscalationTicketPermission(userId: string): void {
+  checkPermission(userId, 'claim_escalation_ticket');
+}
+
+export function checkExportEscalationPermission(userId: string): void {
+  checkPermission(userId, 'export_escalation');
 }
 
 export function getAllRoles(): string[] {

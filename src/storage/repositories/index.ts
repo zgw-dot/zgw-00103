@@ -7,3 +7,5 @@ export { AuditRepository } from './AuditRepository';
 export { BatchRowResultRepository } from './BatchRowResultRepository';
 export { IdempotencyKeyRepository } from './IdempotencyKeyRepository';
 export { BatchRowRemarkRepository } from './BatchRowRemarkRepository';
+export { EscalationRuleRepository } from './EscalationRuleRepository';
+export { EscalationTicketRepository } from './EscalationTicketRepository';
