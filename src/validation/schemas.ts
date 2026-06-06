@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DeviceStatus, AlarmStatus, BatchStatus, RowStatus, RemarkStatus, EscalationRuleScope, EscalationRuleStatus, EscalationTicketStatus, CalibrationPlanStatus } from '../types';
+import { DeviceStatus, AlarmStatus, BatchStatus, RowStatus, RemarkStatus, EscalationRuleScope, EscalationRuleStatus, EscalationTicketStatus, CalibrationPlanStatus, InspectionTemplateStatus, InspectionShift, InspectionStatus } from '../types';
 import { getTestUsers } from '../domain/rules/authRules';
 
 export const createDeviceSchema = z.object({
@@ -372,3 +372,135 @@ export type CalibrationPlanIdInput = z.infer<typeof calibrationPlanIdSchema>;
 export type CalibrationFiltersInput = z.infer<typeof calibrationFiltersSchema>;
 export type CalibrationDeactivateInput = z.infer<typeof calibrationDeactivateSchema>;
 export type CalibrationRevokeInput = z.infer<typeof calibrationRevokeSchema>;
+
+const VALID_INSPECTION_USERS = getTestUsers().map(u => u.id);
+
+const timeWindowSchema = z.object({
+  startTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, '开始时间格式无效，应为HH:mm格式'),
+  endTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, '结束时间格式无效，应为HH:mm格式'),
+}).refine(data => {
+  const [startH, startM] = data.startTime.split(':').map(Number);
+  const [endH, endM] = data.endTime.split(':').map(Number);
+  return (startH * 60 + startM) < (endH * 60 + endM);
+}, { message: '开始时间必须早于结束时间', path: ['startTime'] });
+
+const photoRequirementSchema = z.object({
+  minCount: z.coerce.number().int().min(0, '最少照片数量不能为负数'),
+  required: z.boolean(),
+});
+
+const remarkRequirementSchema = z.object({
+  minLength: z.coerce.number().int().min(0, '最少备注长度不能为负数'),
+  required: z.boolean(),
+});
+
+const templateDeviceSchema = z.object({
+  deviceId: z.string().min(1, '设备ID不能为空'),
+  timeWindow: timeWindowSchema,
+  photoRequirement: photoRequirementSchema,
+  remarkRequirement: remarkRequirementSchema,
+  personInCharge: z.string().refine(
+    (val) => VALID_INSPECTION_USERS.includes(val),
+    { message: `负责人必须是已知用户: ${VALID_INSPECTION_USERS.join(', ')}` }
+  ),
+  sortOrder: z.coerce.number().int().min(0, '排序序号不能为负数'),
+});
+
+export const createInspectionTemplateSchema = z.object({
+  name: z.string().min(1, '模板名称不能为空').max(100, '模板名称不能超过100字符'),
+  storeId: z.string().min(1, '门店ID不能为空'),
+  storeName: z.string().min(1, '门店名称不能为空'),
+  shift: z.enum([InspectionShift.MORNING, InspectionShift.AFTERNOON, InspectionShift.EVENING, InspectionShift.NIGHT], {
+    required_error: '必须指定班次',
+  }),
+  date: z.coerce.number().refine(
+    (v) => !isNaN(v) && v > 946656000000 && v < 4102444800000,
+    { message: '日期必须是有效的时间戳（毫秒），且在2000-01-01 ~ 2100-01-01范围内' }
+  ),
+  devices: z.array(templateDeviceSchema).min(1, '至少需要配置一台设备'),
+  operator: z.string().min(1, '操作人不能为空'),
+}).refine(
+  (data) => {
+    const deviceIds = new Set<string>();
+    for (const device of data.devices) {
+      if (deviceIds.has(device.deviceId)) {
+        return false;
+      }
+      deviceIds.add(device.deviceId);
+    }
+    return true;
+  },
+  { message: '模板中不能包含重复的设备ID', path: ['devices'] }
+);
+
+export const inspectionTemplateIdSchema = z.object({
+  id: z.string().min(1, '模板ID不能为空'),
+});
+
+export const inspectionPublishSchema = z.object({
+  reason: z.string().max(500, '发布原因不能超过500字符').optional(),
+  operator: z.string().min(1, '操作人不能为空'),
+});
+
+export const inspectionCloseSchema = z.object({
+  reason: z.string().min(1, '关闭原因不能为空').max(500, '关闭原因不能超过500字符'),
+  operator: z.string().min(1, '操作人不能为空'),
+});
+
+export const inspectionRevokeSchema = z.object({
+  reason: z.string().min(1, '撤销原因不能为空').max(500, '撤销原因不能超过500字符'),
+  operator: z.string().min(1, '操作人不能为空'),
+});
+
+export const submitInspectionSchema = z.object({
+  templateId: z.string().min(1, '模板ID不能为空'),
+  deviceId: z.string().min(1, '设备ID不能为空'),
+  photos: z.array(z.string()).optional().default([]),
+  remark: z.string().optional().default(''),
+  operator: z.string().min(1, '操作人不能为空'),
+});
+
+export const inspectionRecordIdSchema = z.object({
+  id: z.string().min(1, '巡检记录ID不能为空'),
+});
+
+export const inspectionFiltersSchema = z.object({
+  templateStatus: z.enum([
+    InspectionTemplateStatus.DRAFT,
+    InspectionTemplateStatus.PUBLISHED,
+    InspectionTemplateStatus.CLOSED,
+    InspectionTemplateStatus.REVOKED,
+  ]).optional(),
+  inspectionStatus: z.enum([
+    InspectionStatus.PENDING,
+    InspectionStatus.SUBMITTED,
+    InspectionStatus.LATE,
+    InspectionStatus.MISSED,
+  ]).optional(),
+  shift: z.enum([
+    InspectionShift.MORNING,
+    InspectionShift.AFTERNOON,
+    InspectionShift.EVENING,
+    InspectionShift.NIGHT,
+  ]).optional(),
+  templateId: z.string().optional(),
+  storeId: z.string().optional(),
+  deviceId: z.string().optional(),
+  submittedBy: z.string().optional(),
+  personInCharge: z.string().optional(),
+  startTime: z.coerce.number().optional(),
+  endTime: z.coerce.number().optional(),
+  format: z.enum(['csv', 'json']).default('csv'),
+  type: z.enum(['templates', 'records']).default('records'),
+  page: z.coerce.number().int().positive().optional().default(1),
+  pageSize: z.coerce.number().int().positive().max(500).optional().default(50),
+});
+
+export type CreateInspectionTemplateInput = z.infer<typeof createInspectionTemplateSchema>;
+export type InspectionTemplateIdInput = z.infer<typeof inspectionTemplateIdSchema>;
+export type InspectionPublishInput = z.infer<typeof inspectionPublishSchema>;
+export type InspectionCloseInput = z.infer<typeof inspectionCloseSchema>;
+export type InspectionRevokeInput = z.infer<typeof inspectionRevokeSchema>;
+export type SubmitInspectionInput = z.infer<typeof submitInspectionSchema>;
+export type InspectionRecordIdInput = z.infer<typeof inspectionRecordIdSchema>;
+export type InspectionFiltersInput = z.infer<typeof inspectionFiltersSchema>;

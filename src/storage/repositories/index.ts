@@ -11,3 +11,5 @@ export { EscalationRuleRepository } from './EscalationRuleRepository';
 export { EscalationTicketRepository } from './EscalationTicketRepository';
 export { CalibrationPlanRepository } from './CalibrationPlanRepository';
 export { ReadingCorrectionRepository } from './ReadingCorrectionRepository';
+export { InspectionTemplateRepository } from './InspectionTemplateRepository';
+export { InspectionRecordRepository } from './InspectionRecordRepository';

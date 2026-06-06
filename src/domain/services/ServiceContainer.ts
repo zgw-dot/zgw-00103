@@ -12,6 +12,8 @@ import {
   EscalationTicketRepository,
   CalibrationPlanRepository,
   ReadingCorrectionRepository,
+  InspectionTemplateRepository,
+  InspectionRecordRepository,
 } from '../../storage/repositories';
 import { getDatabase } from '../../storage/database';
 import { DeviceService } from './DeviceService';
@@ -21,6 +23,7 @@ import { ReadingImportService } from './ReadingImportService';
 import { AuditService } from './AuditService';
 import { EscalationService } from './EscalationService';
 import { CalibrationService } from './CalibrationService';
+import { InspectionService } from './InspectionService';
 
 export class ServiceContainer {
   readonly deviceRepo: DeviceRepository;
@@ -36,6 +39,8 @@ export class ServiceContainer {
   readonly escalationTicketRepo: EscalationTicketRepository;
   readonly calibrationPlanRepo: CalibrationPlanRepository;
   readonly readingCorrectionRepo: ReadingCorrectionRepository;
+  readonly inspectionTemplateRepo: InspectionTemplateRepository;
+  readonly inspectionRecordRepo: InspectionRecordRepository;
 
   readonly deviceService: DeviceService;
   readonly thresholdService: ThresholdService;
@@ -44,6 +49,7 @@ export class ServiceContainer {
   readonly auditService: AuditService;
   readonly escalationService: EscalationService;
   readonly calibrationService: CalibrationService;
+  readonly inspectionService: InspectionService;
 
   private static instance: ServiceContainer | null = null;
   private static initPromise: Promise<ServiceContainer> | null = null;
@@ -62,6 +68,8 @@ export class ServiceContainer {
     this.escalationTicketRepo = new EscalationTicketRepository();
     this.calibrationPlanRepo = new CalibrationPlanRepository();
     this.readingCorrectionRepo = new ReadingCorrectionRepository();
+    this.inspectionTemplateRepo = new InspectionTemplateRepository();
+    this.inspectionRecordRepo = new InspectionRecordRepository();
 
     this.deviceService = new DeviceService(this.deviceRepo, this.auditRepo);
     this.thresholdService = new ThresholdService(this.thresholdRepo, this.auditRepo, this.deviceRepo);
@@ -71,6 +79,14 @@ export class ServiceContainer {
       this.readingCorrectionRepo,
       this.deviceRepo,
       this.auditRepo
+    );
+    this.inspectionService = new InspectionService(
+      this.inspectionTemplateRepo,
+      this.inspectionRecordRepo,
+      this.deviceRepo,
+      this.auditRepo,
+      this.alarmRepo,
+      this.readingRepo
     );
     this.readingImportService = new ReadingImportService(
       this.deviceRepo,

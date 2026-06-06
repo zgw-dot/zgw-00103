@@ -1,10 +1,10 @@
 import { UnauthorizedError } from '../../utils/errors';
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['alarm_acknowledge', 'alarm_close', 'device_manage', 'threshold_manage', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks', 'manage_escalation_rules', 'view_escalation', 'claim_escalation_ticket', 'export_escalation', 'manage_calibration_plans', 'view_calibration_plans', 'export_calibration'],
-  manager: ['alarm_acknowledge', 'alarm_close', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks', 'manage_escalation_rules', 'view_escalation', 'claim_escalation_ticket', 'export_escalation', 'manage_calibration_plans', 'view_calibration_plans', 'export_calibration'],
-  operator: ['import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'view_escalation', 'claim_escalation_ticket', 'export_escalation', 'view_calibration_plans', 'export_calibration'],
-  viewer: ['export_audit', 'view_batches', 'export_batches', 'view_escalation', 'export_escalation', 'view_calibration_plans', 'export_calibration'],
+  admin: ['alarm_acknowledge', 'alarm_close', 'device_manage', 'threshold_manage', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks', 'manage_escalation_rules', 'view_escalation', 'claim_escalation_ticket', 'export_escalation', 'manage_calibration_plans', 'view_calibration_plans', 'export_calibration', 'manage_inspection_templates', 'submit_inspection', 'view_inspection', 'export_inspection'],
+  manager: ['alarm_acknowledge', 'alarm_close', 'import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'manage_row_remarks', 'manage_escalation_rules', 'view_escalation', 'claim_escalation_ticket', 'export_escalation', 'manage_calibration_plans', 'view_calibration_plans', 'export_calibration', 'manage_inspection_templates', 'submit_inspection', 'view_inspection', 'export_inspection'],
+  operator: ['import_readings', 'dry_run_import', 'export_audit', 'view_batches', 'export_batches', 'view_escalation', 'claim_escalation_ticket', 'export_escalation', 'view_calibration_plans', 'export_calibration', 'submit_inspection', 'view_inspection', 'export_inspection'],
+  viewer: ['export_audit', 'view_batches', 'export_batches', 'view_escalation', 'export_escalation', 'view_calibration_plans', 'export_calibration', 'view_inspection', 'export_inspection'],
 };
 
 const USER_ROLES: Record<string, string[]> = {
@@ -128,4 +128,20 @@ export function getTestUsers(): Array<{ id: string; roles: string[]; permissions
     roles,
     permissions: getPermissionsForUser(id),
   }));
+}
+
+export function checkManageInspectionTemplatesPermission(userId: string): void {
+  checkPermission(userId, 'manage_inspection_templates');
+}
+
+export function checkSubmitInspectionPermission(userId: string): void {
+  checkPermission(userId, 'submit_inspection');
+}
+
+export function checkViewInspectionPermission(userId: string): void {
+  checkPermission(userId, 'view_inspection');
+}
+
+export function checkExportInspectionPermission(userId: string): void {
+  checkPermission(userId, 'export_inspection');
 }

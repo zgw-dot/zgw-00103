@@ -35,7 +35,177 @@ export enum OperationType {
   CALIBRATION_PLAN_CREATE = 'calibration_plan_create',
   CALIBRATION_PLAN_DEACTIVATE = 'calibration_plan_deactivate',
   CALIBRATION_PLAN_REVOKE = 'calibration_plan_revoke',
-  READING_CORRECTION_APPLY = 'reading_correction_apply'
+  READING_CORRECTION_APPLY = 'reading_correction_apply',
+  INSPECTION_TEMPLATE_CREATE = 'inspection_template_create',
+  INSPECTION_TEMPLATE_PUBLISH = 'inspection_template_publish',
+  INSPECTION_TEMPLATE_CLOSE = 'inspection_template_close',
+  INSPECTION_TEMPLATE_REVOKE = 'inspection_template_revoke',
+  INSPECTION_SUBMIT = 'inspection_submit',
+  INSPECTION_EXPORT = 'inspection_export'
+}
+
+export enum InspectionTemplateStatus {
+  DRAFT = 'draft',
+  PUBLISHED = 'published',
+  CLOSED = 'closed',
+  REVOKED = 'revoked'
+}
+
+export enum InspectionShift {
+  MORNING = 'morning',
+  AFTERNOON = 'afternoon',
+  EVENING = 'evening',
+  NIGHT = 'night'
+}
+
+export enum InspectionStatus {
+  PENDING = 'pending',
+  SUBMITTED = 'submitted',
+  LATE = 'late',
+  MISSED = 'missed'
+}
+
+export interface InspectionTimeWindow {
+  startTime: string;
+  endTime: string;
+}
+
+export interface InspectionPhotoRequirement {
+  minCount: number;
+  required: boolean;
+}
+
+export interface InspectionRemarkRequirement {
+  minLength: number;
+  required: boolean;
+}
+
+export interface InspectionTemplateDevice {
+  deviceId: string;
+  timeWindow: InspectionTimeWindow;
+  photoRequirement: InspectionPhotoRequirement;
+  remarkRequirement: InspectionRemarkRequirement;
+  personInCharge: string;
+  sortOrder: number;
+}
+
+export interface InspectionTemplate {
+  id: string;
+  name: string;
+  storeId: string;
+  storeName: string;
+  shift: InspectionShift;
+  date: number;
+  devices: InspectionTemplateDevice[];
+  status: InspectionTemplateStatus;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  publishedAt?: number;
+  publishedBy?: string;
+  closedAt?: number;
+  closedBy?: string;
+  closedReason?: string;
+  revokedAt?: number;
+  revokedBy?: string;
+  revokedReason?: string;
+}
+
+export interface InspectionRecord {
+  id: string;
+  templateId: string;
+  deviceId: string;
+  storeId: string;
+  submittedBy: string;
+  submittedAt: number;
+  status: InspectionStatus;
+  photos: string[];
+  remark: string;
+  latestReadingId?: string;
+  latestReadingTemperature?: number;
+  latestReadingTime?: number;
+  activeAlarmId?: string;
+  activeAlarmType?: string;
+  activeAlarmTemperature?: number;
+  activeAlarmThreshold?: number;
+  timeWindowStart?: number;
+  timeWindowEnd?: number;
+  expectedCheckTime?: number;
+  isLate: boolean;
+  lateMinutes?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateInspectionTemplateInput {
+  name: string;
+  storeId: string;
+  storeName: string;
+  shift: InspectionShift;
+  date: number;
+  devices: InspectionTemplateDevice[];
+}
+
+export interface PublishInspectionTemplateInput {
+  reason?: string;
+}
+
+export interface CloseInspectionTemplateInput {
+  reason: string;
+}
+
+export interface RevokeInspectionTemplateInput {
+  reason: string;
+}
+
+export interface SubmitInspectionInput {
+  templateId: string;
+  deviceId: string;
+  photos: string[];
+  remark: string;
+}
+
+export interface InspectionFilters extends QueryFilters {
+  templateStatus?: InspectionTemplateStatus;
+  inspectionStatus?: InspectionStatus;
+  shift?: InspectionShift;
+  templateId?: string;
+  submittedBy?: string;
+  personInCharge?: string;
+}
+
+export interface InspectionExportFilters extends InspectionFilters {
+  format?: 'csv' | 'json';
+  type?: 'templates' | 'records';
+}
+
+export interface InspectionStats {
+  totalTemplates: number;
+  publishedTemplates: number;
+  closedTemplates: number;
+  revokedTemplates: number;
+  totalInspections: number;
+  submittedInspections: number;
+  lateInspections: number;
+  missedInspections: number;
+  pendingInspections: number;
+}
+
+export interface InspectionTemplateWithDetails extends InspectionTemplate {
+  inspectionCount: number;
+  submittedCount: number;
+  lateCount: number;
+  missedCount: number;
+}
+
+export interface InspectionRecordWithDetails extends InspectionRecord {
+  templateName: string;
+  shift: InspectionShift;
+  templateDate: number;
+  deviceName: string;
+  personInCharge: string;
+  photoRequirement: InspectionPhotoRequirement;
+  remarkRequirement: InspectionRemarkRequirement;
 }
 
 export enum CalibrationPlanStatus {
