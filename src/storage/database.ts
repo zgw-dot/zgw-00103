@@ -210,10 +210,11 @@ export function runInTransaction(fn: () => void): void {
   
   isInTransaction = true;
   db.run('BEGIN TRANSACTION');
+  let committed = false;
   try {
     fn();
     db.run('COMMIT');
-    saveDatabase();
+    committed = true;
   } catch (error) {
     try {
       db.run('ROLLBACK');
@@ -223,6 +224,9 @@ export function runInTransaction(fn: () => void): void {
     throw error;
   } finally {
     isInTransaction = false;
+    if (committed) {
+      saveDatabase();
+    }
   }
 }
 
