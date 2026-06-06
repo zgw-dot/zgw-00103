@@ -70,17 +70,16 @@ router.post(
         operator
       );
 
-      const hasErrors = result.errors.length > 0;
-      res.status(hasErrors ? 207 : 200).json({
-        success: !hasErrors,
+      res.status(200).json({
+        success: true,
         data: result,
-        message: hasErrors
-          ? `导入完成，成功${result.successCount}条，失败${result.failedCount}条`
-          : `导入成功，共${result.successCount}条`,
-        errors: hasErrors ? result.errors : undefined,
+        message: `导入成功，共${result.successCount}条`,
       });
     } catch (error) {
-      next(error);
+      res.status(400).json({
+        success: false,
+        message: error instanceof Error ? error.message : '导入失败',
+      });
     }
   }
 );

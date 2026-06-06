@@ -51,6 +51,50 @@ export class ReadingImportService {
     private alarmRepo: AlarmRepository
   ) {}
 
+  private async parseCsvWithAutoHeaderDetection(fileStream: Readable): Promise<CsvReadingRow[]> {
+    const rawLines: string[] = [];
+
+    await new Promise<void>((resolve, reject) => {
+      let buffer = '';
+      fileStream
+        .on('data', (chunk: Buffer) => {
+          buffer += chunk.toString('utf-8');
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() || '';
+          rawLines.push(...lines);
+        })
+        .on('end', () => {
+          if (buffer.trim()) rawLines.push(buffer);
+          resolve();
+        })
+        .on('error', reject);
+    });
+
+    const rows: CsvReadingRow[] = [];
+    let startIndex = 0;
+
+    if (rawLines.length > 0) {
+      const firstLine = rawLines[0].trim().toLowerCase();
+      if (firstLine.includes('deviceid') && firstLine.includes('temperature') && firstLine.includes('readingtime')) {
+        startIndex = 1;
+      }
+    }
+
+    for (let i = startIndex; i < rawLines.length; i++) {
+      const line = rawLines[i].trim();
+      if (!line) continue;
+
+      const values = line.split(',');
+      const deviceId = values[0]?.trim() || '';
+      const temperature = values[1]?.trim() || '';
+      const readingTime = values[2]?.trim() || '';
+
+      rows.push({ deviceId, temperature, readingTime });
+    }
+
+    return rows;
+  }
+
   async dryRunImport(
     fileStream: Readable,
     fileName: string,
@@ -58,17 +102,7 @@ export class ReadingImportService {
   ): Promise<DryRunResult> {
     checkDryRunPermission(operator);
 
-    const rows: CsvReadingRow[] = [];
-
-    await new Promise<void>((resolve, reject) => {
-      fileStream
-        .pipe(csvParser({ headers: ['deviceId', 'temperature', 'readingTime'], skipLines: 0 }))
-        .on('data', (row: CsvReadingRow) => {
-          rows.push(row);
-        })
-        .on('end', resolve)
-        .on('error', reject);
-    });
+    const rows = await this.parseCsvWithAutoHeaderDetection(fileStream);
 
     return performDryRun(
       rows,
@@ -87,26 +121,65 @@ export class ReadingImportService {
   ): Promise<ImportResult> {
     checkImportPermission(operator);
 
-    const rows: CsvReadingRow[] = [];
-    await new Promise<void>((resolve, reject) => {
-      fileStream
-        .pipe(csvParser({ headers: ['deviceId', 'temperature', 'readingTime'], skipLines: 0 }))
-        .on('data', (row: CsvReadingRow) => {
-          rows.push(row);
-        })
-        .on('end', resolve)
-        .on('error', reject);
-    });
+    const rows = await this.parseCsvWithAutoHeaderDetection(fileStream);
 
-    const batch = this.importBatchRepo.create({
+    const dryRunResult = await performDryRun(
+      rows,
       fileName,
-      totalCount: rows.length,
-      successCount: 0,
-      failedCount: 0,
-      errorDetails: '',
-      createdBy: operator,
-      status: BatchStatus.PROCESSING,
-    });
+      this.deviceRepo,
+      this.readingRepo,
+      this.thresholdRepo,
+      this.alarmRepo
+    );
+
+    if (dryRunResult.invalidCount > 0) {
+      const seenRows = new Set<number>();
+      const allErrors: string[] = [];
+      
+      for (const e of dryRunResult.rowErrors) {
+        if (!seenRows.has(e.rowIndex)) {
+          seenRows.add(e.rowIndex);
+          allErrors.push(e.error);
+        }
+      }
+      
+      for (const d of dryRunResult.unknownDevices) {
+        if (!seenRows.has(d.rowIndex)) {
+          seenRows.add(d.rowIndex);
+          allErrors.push(`第${d.rowIndex}行：设备"${d.deviceId}"不存在`);
+        }
+      }
+      
+      for (const d of dryRunResult.inactiveDevices) {
+        if (!seenRows.has(d.rowIndex)) {
+          seenRows.add(d.rowIndex);
+          allErrors.push(`第${d.rowIndex}行：设备"${d.deviceId}"已停用`);
+        }
+      }
+      
+      for (const d of dryRunResult.duplicateTimes) {
+        if (!seenRows.has(d.rowIndex)) {
+          seenRows.add(d.rowIndex);
+          allErrors.push(`第${d.rowIndex}行：设备"${d.deviceId}"在时间戳${d.readingTime}存在重复读数`);
+        }
+      }
+      
+      for (const d of dryRunResult.outOfOrderTimes) {
+        if (!seenRows.has(d.rowIndex)) {
+          seenRows.add(d.rowIndex);
+          allErrors.push(`第${d.rowIndex}行：设备"${d.deviceId}"读数时间倒序`);
+        }
+      }
+      
+      for (const d of dryRunResult.thresholdConflicts) {
+        if (!seenRows.has(d.rowIndex)) {
+          seenRows.add(d.rowIndex);
+          allErrors.push(`第${d.rowIndex}行：设备"${d.deviceId}"温度${d.temperature}${d.violationType === 'above_max' ? '高于' : '低于'}阈值${d.violationType === 'above_max' ? d.maxTemp : d.minTemp}`);
+        }
+      }
+
+      throw new Error(`CSV文件包含${dryRunResult.invalidCount}条非法数据，整批导入失败：${allErrors.join('; ')}`);
+    }
 
     const context: PreCheckContext = {
       lastReadingTimes: new Map<string, number>(),
@@ -115,18 +188,14 @@ export class ReadingImportService {
       thresholdCache: new Map<string, Threshold>(),
     };
 
-    const rowResults: Array<Omit<BatchRowResult, 'id' | 'createdAt'>> = [];
-    const validReadings: Array<{
-      reading: Omit<TemperatureReading, 'id' | 'createdAt'>;
-      deviceId: string;
-      storeId: string;
+    const validatedRows: Array<{
+      row: CsvReadingRow;
+      validated: Awaited<ReturnType<typeof preCheckAndClassifyRow>>;
     }> = [];
-    const errors: string[] = [];
 
     for (let i = 0; i < rows.length; i++) {
       context.rowIndex = i + 1;
       const row = rows[i];
-
       const validated = await preCheckAndClassifyRow(
         row,
         context,
@@ -137,55 +206,55 @@ export class ReadingImportService {
       );
 
       if (!validated.valid || !validated.parsed) {
-        errors.push(validated.error || `第${i + 1}行：未知错误`);
-        rowResults.push({
-          importBatchId: batch.id,
-          rowIndex: i + 1,
-          deviceId: row.deviceId,
-          temperature: validated.parsed?.temperature,
-          readingTime: validated.parsed?.readingTime,
-          status: RowStatus.FAILED,
-          errorMessage: validated.error,
-        });
-        continue;
+        throw new Error(validated.error || `第${i + 1}行：未知错误`);
       }
 
-      const { deviceId, temperature, readingTime } = validated.parsed;
-      const device = this.deviceRepo.findById(deviceId)!;
-
-      rowResults.push({
-        importBatchId: batch.id,
-        rowIndex: i + 1,
-        deviceId,
-        temperature,
-        readingTime,
-        status: RowStatus.SUCCESS,
-      });
-
-      validReadings.push({
-        reading: {
-          deviceId,
-          temperature,
-          readingTime,
-          importBatchId: batch.id,
-        },
-        deviceId,
-        storeId: device.storeId,
-      });
+      validatedRows.push({ row, validated });
     }
 
     let generatedAlarms = 0;
     let recoveredAlarms = 0;
+    let batchId = '';
 
     try {
       runInTransaction(() => {
-        for (const vr of validReadings) {
-          const reading = this.readingRepo.create(vr.reading);
+        const batch = this.importBatchRepo.create({
+          fileName,
+          totalCount: rows.length,
+          successCount: 0,
+          failedCount: 0,
+          errorDetails: '',
+          createdBy: operator,
+          status: BatchStatus.PROCESSING,
+        });
+        batchId = batch.id;
+
+        const rowResults: Array<Omit<BatchRowResult, 'id' | 'createdAt'>> = [];
+
+        for (const { validated } of validatedRows) {
+          const { deviceId, temperature, readingTime } = validated.parsed!;
+          const device = this.deviceRepo.findById(deviceId)!;
+
+          rowResults.push({
+            importBatchId: batch.id,
+            rowIndex: validated.rowIndex,
+            deviceId,
+            temperature,
+            readingTime,
+            status: RowStatus.SUCCESS,
+          });
+
+          const reading = this.readingRepo.create({
+            deviceId,
+            temperature,
+            readingTime,
+            importBatchId: batch.id,
+          });
 
           const alarmResult = this.alarmService.processReadingForAlarms(
             reading,
-            vr.deviceId,
-            vr.storeId
+            deviceId,
+            device.storeId
           );
 
           if (alarmResult.createdAlarm) generatedAlarms++;
@@ -197,45 +266,32 @@ export class ReadingImportService {
         }
 
         this.importBatchRepo.update(batch.id, {
-          successCount: validReadings.length,
-          failedCount: errors.length,
-          errorDetails: errors.length > 0 ? JSON.stringify(errors) : '',
+          successCount: rows.length,
+          failedCount: 0,
+          errorDetails: '',
           status: BatchStatus.COMPLETED,
           completedAt: Date.now(),
         });
+
+        this.auditRepo.create({
+          operationType: OperationType.READING_IMPORT,
+          entityId: batch.id,
+          entityType: 'import_batch',
+          operator,
+          details: `导入CSV文件"${fileName}"，共${rows.length}条，成功${rows.length}条，生成告警${generatedAlarms}条，恢复告警${recoveredAlarms}条`,
+          importBatchId: batch.id,
+        });
       });
     } catch (error) {
-      logger.error('Import transaction failed, rolling back', error);
-
-      this.importBatchRepo.updateStatus(batch.id, BatchStatus.ROLLED_BACK, Date.now());
-      this.batchRowResultRepo.deleteByBatchId(batch.id);
-
-      this.auditRepo.create({
-        operationType: OperationType.READING_IMPORT,
-        entityId: batch.id,
-        entityType: 'import_batch',
-        operator,
-        details: `导入CSV文件"${fileName}"失败，事务已回滚。错误：${error instanceof Error ? error.message : String(error)}`,
-        importBatchId: batch.id,
-      });
-
+      logger.error('Import failed, rolling back', error);
       throw error;
     }
 
-    this.auditRepo.create({
-      operationType: OperationType.READING_IMPORT,
-      entityId: batch.id,
-      entityType: 'import_batch',
-      operator,
-      details: `导入CSV文件"${fileName}"，共${batch.totalCount}条，成功${validReadings.length}条，失败${errors.length}条，生成告警${generatedAlarms}条，恢复告警${recoveredAlarms}条`,
-      importBatchId: batch.id,
-    });
-
     return {
-      batchId: batch.id,
-      successCount: validReadings.length,
-      failedCount: errors.length,
-      errors,
+      batchId,
+      successCount: rows.length,
+      failedCount: 0,
+      errors: [],
       generatedAlarms,
       recoveredAlarms,
       status: BatchStatus.COMPLETED,
