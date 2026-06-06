@@ -219,6 +219,7 @@ export function validateImportRow(
 
 export interface PreCheckContext {
   lastReadingTimes: Map<string, number>;
+  seenTimestamps: Map<string, Set<number>>;
   rowIndex: number;
   openAlarmsCache: Map<string, Alarm[]>;
   thresholdCache: Map<string, Threshold>;
@@ -305,7 +306,9 @@ export async function preCheckAndClassifyRow(
     return result;
   }
 
-  const exists = readingRepo.exists(deviceId, readingTime);
+  const dbExists = readingRepo.exists(deviceId, readingTime);
+  const batchExists = context.seenTimestamps.get(deviceId)?.has(readingTime);
+  const exists = dbExists || batchExists;
   result.isDuplicate = exists;
   if (exists) {
     const timeStr = new Date(readingTime).toLocaleString('zh-CN');
@@ -327,6 +330,10 @@ export async function preCheckAndClassifyRow(
 
   result.valid = true;
   context.lastReadingTimes.set(deviceId, readingTime);
+  if (!context.seenTimestamps.has(deviceId)) {
+    context.seenTimestamps.set(deviceId, new Set());
+  }
+  context.seenTimestamps.get(deviceId)!.add(readingTime);
 
   return result;
 }
@@ -341,6 +348,7 @@ export async function performDryRun(
 ): Promise<DryRunResult> {
   const context: PreCheckContext = {
     lastReadingTimes: new Map<string, number>(),
+    seenTimestamps: new Map<string, Set<number>>(),
     rowIndex: 0,
     openAlarmsCache: new Map<string, Alarm[]>(),
     thresholdCache: new Map<string, Threshold>(),

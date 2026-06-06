@@ -39,6 +39,7 @@ import {
   performDryRun,
   preCheckAndClassifyRow,
   PreCheckContext,
+  parseDateTime,
 } from '../rules';
 import logger from '../../utils/logger';
 import { NotFoundError, BusinessError } from '../../utils/errors';
@@ -220,66 +221,9 @@ export class ReadingImportService {
 
     const rows = await this.parseCsvWithAutoHeaderDetection(fileStream);
 
-    const dryRunResult = await performDryRun(
-      rows,
-      fileName,
-      this.deviceRepo,
-      this.readingRepo,
-      this.thresholdRepo,
-      this.alarmRepo
-    );
-
-    if (dryRunResult.invalidCount > 0) {
-      const seenRows = new Set<number>();
-      const allErrors: string[] = [];
-      
-      for (const e of dryRunResult.rowErrors) {
-        if (!seenRows.has(e.rowIndex)) {
-          seenRows.add(e.rowIndex);
-          allErrors.push(e.error);
-        }
-      }
-      
-      for (const d of dryRunResult.unknownDevices) {
-        if (!seenRows.has(d.rowIndex)) {
-          seenRows.add(d.rowIndex);
-          allErrors.push(`第${d.rowIndex}行：设备"${d.deviceId}"不存在`);
-        }
-      }
-      
-      for (const d of dryRunResult.inactiveDevices) {
-        if (!seenRows.has(d.rowIndex)) {
-          seenRows.add(d.rowIndex);
-          allErrors.push(`第${d.rowIndex}行：设备"${d.deviceId}"已停用`);
-        }
-      }
-      
-      for (const d of dryRunResult.duplicateTimes) {
-        if (!seenRows.has(d.rowIndex)) {
-          seenRows.add(d.rowIndex);
-          allErrors.push(`第${d.rowIndex}行：设备"${d.deviceId}"在时间戳${d.readingTime}存在重复读数`);
-        }
-      }
-      
-      for (const d of dryRunResult.outOfOrderTimes) {
-        if (!seenRows.has(d.rowIndex)) {
-          seenRows.add(d.rowIndex);
-          allErrors.push(`第${d.rowIndex}行：设备"${d.deviceId}"读数时间倒序`);
-        }
-      }
-      
-      for (const d of dryRunResult.thresholdConflicts) {
-        if (!seenRows.has(d.rowIndex)) {
-          seenRows.add(d.rowIndex);
-          allErrors.push(`第${d.rowIndex}行：设备"${d.deviceId}"温度${d.temperature}${d.violationType === 'above_max' ? '高于' : '低于'}阈值${d.violationType === 'above_max' ? d.maxTemp : d.minTemp}`);
-        }
-      }
-
-      throw new Error(`CSV文件包含${dryRunResult.invalidCount}条非法数据，整批导入失败：${allErrors.join('; ')}`);
-    }
-
     const context: PreCheckContext = {
       lastReadingTimes: new Map<string, number>(),
+      seenTimestamps: new Map<string, Set<number>>(),
       rowIndex: 0,
       openAlarmsCache: new Map<string, Alarm[]>(),
       thresholdCache: new Map<string, Threshold>(),
@@ -302,93 +246,101 @@ export class ReadingImportService {
         this.alarmRepo
       );
 
-      if (!validated.valid || !validated.parsed) {
-        throw new Error(validated.error || `第${i + 1}行：未知错误`);
+      if (validated.valid && validated.parsed) {
+        context.lastReadingTimes.set(validated.parsed.deviceId, validated.parsed.readingTime);
       }
 
       validatedRows.push({ row, validated });
     }
 
+    const successRows = validatedRows.filter(v => v.validated.valid && v.validated.parsed);
+    const failedRows = validatedRows.filter(v => !v.validated.valid || !v.validated.parsed);
+    const errors = failedRows.map(f => f.validated.error || `第${f.validated.rowIndex}行：未知错误`);
+
     let generatedAlarms = 0;
     let recoveredAlarms = 0;
     let batchId = '';
 
-    try {
-      runInTransaction(() => {
-        const batch = this.importBatchRepo.create({
-          fileName,
-          totalCount: rows.length,
-          successCount: 0,
-          failedCount: 0,
-          errorDetails: '',
-          createdBy: operator,
-          status: BatchStatus.PROCESSING,
-        });
-        batchId = batch.id;
+    runInTransaction(() => {
+      const batch = this.importBatchRepo.create({
+        fileName,
+        totalCount: rows.length,
+        successCount: 0,
+        failedCount: 0,
+        errorDetails: '',
+        createdBy: operator,
+        status: BatchStatus.PROCESSING,
+      });
+      batchId = batch.id;
 
-        const rowResults: Array<Omit<BatchRowResult, 'id' | 'createdAt'>> = [];
+      for (const { validated } of successRows) {
+        const { deviceId, temperature, readingTime } = validated.parsed!;
+        const device = this.deviceRepo.findById(deviceId)!;
 
-        for (const { validated } of validatedRows) {
-          const { deviceId, temperature, readingTime } = validated.parsed!;
-          const device = this.deviceRepo.findById(deviceId)!;
-
-          rowResults.push({
-            importBatchId: batch.id,
-            rowIndex: validated.rowIndex,
-            deviceId,
-            temperature,
-            readingTime,
-            status: RowStatus.SUCCESS,
-          });
-
-          const reading = this.readingRepo.create({
-            deviceId,
-            temperature,
-            readingTime,
-            importBatchId: batch.id,
-          });
-
-          const alarmResult = this.alarmService.processReadingForAlarms(
-            reading,
-            deviceId,
-            device.storeId
-          );
-
-          if (alarmResult.createdAlarm) generatedAlarms++;
-          if (alarmResult.recoveredAlarm) recoveredAlarms++;
-        }
-
-        for (const rowResult of rowResults) {
-          this.batchRowResultRepo.create(rowResult);
-        }
-
-        this.importBatchRepo.update(batch.id, {
-          successCount: rows.length,
-          failedCount: 0,
-          errorDetails: '',
-          status: BatchStatus.COMPLETED,
-          completedAt: Date.now(),
+        this.batchRowResultRepo.create({
+          importBatchId: batch.id,
+          rowIndex: validated.rowIndex,
+          deviceId,
+          temperature,
+          readingTime,
+          status: RowStatus.SUCCESS,
         });
 
-        this.auditRepo.create({
-          operationType: OperationType.READING_IMPORT,
-          entityId: batch.id,
-          entityType: 'import_batch',
-          operator,
-          details: `导入CSV文件"${fileName}"，共${rows.length}条，成功${rows.length}条，生成告警${generatedAlarms}条，恢复告警${recoveredAlarms}条`,
+        const reading = this.readingRepo.create({
+          deviceId,
+          temperature,
+          readingTime,
           importBatchId: batch.id,
         });
+
+        const alarmResult = this.alarmService.processReadingForAlarms(
+          reading,
+          deviceId,
+          device.storeId
+        );
+
+        if (alarmResult.createdAlarm) generatedAlarms++;
+        if (alarmResult.recoveredAlarm) recoveredAlarms++;
+      }
+
+      for (const { row, validated } of failedRows) {
+        const parsed = validated.parsed;
+        const temperature = parsed?.temperature ?? parseFloat(row.temperature);
+        const readingTime = parsed?.readingTime ?? parseDateTime(row.readingTime);
+        this.batchRowResultRepo.create({
+          importBatchId: batch.id,
+          rowIndex: validated.rowIndex,
+          deviceId: row.deviceId,
+          temperature: isNaN(temperature) ? undefined : temperature,
+          readingTime: readingTime === null ? undefined : readingTime,
+          status: RowStatus.FAILED,
+          errorMessage: validated.error,
+        });
+      }
+
+      this.importBatchRepo.update(batch.id, {
+        successCount: successRows.length,
+        failedCount: failedRows.length,
+        errorDetails: errors.length > 0 ? errors.join('; ') : '',
+        status: BatchStatus.COMPLETED,
+        completedAt: Date.now(),
       });
-    } catch (error) {
-      logger.error('Import failed, rolling back', error);
-      throw error;
-    }
+
+      this.auditRepo.create({
+        operationType: OperationType.READING_IMPORT,
+        entityId: batch.id,
+        entityType: 'import_batch',
+        operator,
+        details: `导入CSV文件"${fileName}"，共${rows.length}条，成功${successRows.length}条，失败${failedRows.length}条，生成告警${generatedAlarms}条，恢复告警${recoveredAlarms}条`,
+        importBatchId: batch.id,
+      });
+    });
 
     return {
       batchId,
-      successCount: rows.length,
-      failedCount: 0,
-      errors: [],
+      successCount: successRows.length,
+      failedCount: failedRows.length,
+      errors,
       generatedAlarms,
       recoveredAlarms,
       status: BatchStatus.COMPLETED,
